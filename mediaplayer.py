@@ -5,8 +5,81 @@ import os
 import vlc
 import time
 import sys
-#P.set_xwindow(UI.WINDOW2['-VID_OUT-'].Widget.winfo_id())
+import subprocess
 import tkinter as tk
+
+def edit_active_series():
+	def add_item():
+		active = p.ACTIVE_SERIES
+		if type(active) == tuple:
+			active = list(active)
+		indexes = listbox_all_series.curselection()
+		for idx in indexes:
+			item = listbox_all_series.get(idx)
+			if item not in active:
+				listbox_active_series.insert(tk.END, item)
+				active.append(item)
+			else:
+				print("Item already in active:", item)
+		update_list(listbox_active_series, active)
+		p.set_active_series(active)
+		return active
+	def del_item():
+		indexes = listbox_active_series.curselection()
+		print("indexes:", indexes)
+		for idx in indexes:
+			item = listbox_active_series.get(idx)
+			if item in active:
+				idx = active.index(item)
+				_ = active.pop(idx)
+			else:
+				print("Item not in active???", item)
+		update_list(listbox_active_series, active)
+		p.set_active_series(active)
+		return active
+	def update_active(active_items=None):
+		if active_items is None:
+			active_items = listbox_active_series.get(0, tk.END)
+			if len(active_items) != len(p.ACTIVE_SERIES):
+				print("Length is different! Updating player option ('ACTIVE_SERIES')...")
+				p.set_active_series(series_names=active_items)
+		root.destroy()
+		return active_items
+	def update_list(lb, items):
+		lb.delete(0, tk.END)
+		for item in items:
+			lb.insert(tk.END, item)
+	if p is None:
+		p = Player()
+	active = p.ACTIVE_SERIES
+	root = tk.Tk()
+	active_frame = tk.Frame(root)
+	all_frame = tk.Frame(root)
+	txt_active = tk.Label(active_frame, text='Active Series Names')
+	txt_active.pack(side='top')
+	txt_all = tk.Label(all_frame, text='All Series')
+	txt_all.pack(side='top')
+	listbox_active_series = tk.Listbox(active_frame)
+	listbox_all_series = tk.Listbox(all_frame)
+	listbox_active_series.pack(side='top')
+	listbox_all_series.pack(side='top')
+	btn_add = tk.Button(all_frame, text='Add!', command=add_item)
+	btn_add.pack(side='top')
+	btn_del = tk.Button(active_frame, text='Del!', command=del_item)
+	btn_del.pack(side='top')
+	btn_ok = tk.Button(root, text='Ok!', command=update_active)
+	active_frame.pack(side='left')
+	all_frame.pack(side='right')
+	btn_ok.pack(side='right')
+	active = p.ACTIVE_SERIES
+	update_list(listbox_active_series, active)
+	all_series = list(p.PLAYLIST._list_series().keys())
+	update_list(listbox_all_series, all_series)
+
+def get_screen_res():
+	w, h = subprocess.check_output("xrandr | grep '*' | xargs | cut -d ' ' -f 1", shell=True).decode().strip().split('x')
+	return int(w), int(h)
+	
 
 class MediaGuesser():
 	def __init__(self, filepath=None):
@@ -510,7 +583,7 @@ class Playlist():
 
 
 class Player():
-	def __init__(self, width=640, height=480, cache_size=6000, keyboard_events=False, run_mainloop=False, new_player_window=True, vlc_verbosity=0):
+	def __init__(self, width=None, height=None, cache_size=6000, scale_video=1.0, run_mainloop=False, new_player_window=True, vlc_verbosity=0, fullscreen=False):
 		"""
 		Main player class
 		args:
@@ -518,14 +591,17 @@ class Player():
 			run_mainloop - if True, runs tkinter.Tk().mainloop after all else is done. Currently unused (default=False)
 			new_player_window - whether or not to show player window. set to False to init player with no tkinter viewer window
 		"""
+		self.SCALE = scale_video
+		self.FULLSCREEN = fullscreen
 		self.PLAY_NEXT = None
 		self.EVENT = None
-		self.KEYBOARD = keyboard_events
 		self.DATA_DIR = os.path.join(os.path.expanduser("~"), '.nplayerv2')
 		if not os.path.exists(self.DATA_DIR):
 			os.makedirs(self.DATA_DIR, exist_ok=True)
 		self.CONF_PATH = os.path.join(self.DATA_DIR, 'settings.conf')
 		self.STATE = 'Unloaded'
+		if width is None and height is None:
+			width, height = get_screen_res()
 		self.WIDTH = width
 		self.HEIGHT = height
 		#opts = '--no-xlib --audio-filter=normvol --norm-buff-size=20 --norm-max-level=2'
@@ -536,7 +612,15 @@ class Player():
 		self.PLAYER = self.VLC.media_player_new()
 		if new_player_window:
 			self.VIEWER = tk.Tk()
-			frame = tk.Frame(self.VIEWER, width=self.WIDTH, height=self.HEIGHT, bg='black')
+			self.STATUS_STRINGVAR = tk.Stringvar(self.VIEWER, value=self.STATE)
+			self.VIEWER.config(menu=self.get_menu())
+			self.VIEWER.title("Media Player")
+			w, h = get_screen_res()
+			self.VIEWER.geometry(f"{w}x{h}")
+			self.VIEWER.bind("<Configure>", self.set_scale)
+			frame = tk.Frame(self.VIEWER, width=w, height=h, bg='black')
+			#frame = tk.Frame(self.VIEWER, width=self.WIDTH, height=self.HEIGHT, bg='black')
+			#frame.pack(fill="both", expand=True)
 			frame.pack()
 			self.VIEWER.update() # Important to update to ensure the window is created
 			self.VIEWER_WINDOW_ID = frame.winfo_id()
@@ -546,14 +630,13 @@ class Player():
 		self.ALL_EVENTS = [i for i in dir(vlc.Event().type) if '_' not in i]
 		self.ACTIVE_SERIES = None
 		config = self.get_config(apply_changes=True)
-		print("config:", config, type(config))
 		try:
 			self.ACTIVE_SERIES = config['ACTIVE_SERIES']
 		except:
 			config['ACTIVE_SERIES'] = self.ACTIVE_SERIES
 			self.save_current_config(config)
-		print("Allowing vlc to load, 5 seconds!")
-		self.wait(5)
+		#print("Allowing vlc to load, 5 seconds!")
+		#self.wait(5)
 		self.PLAYLIST = Playlist(active_series=self.ACTIVE_SERIES)
 		if self.PLAY_NEXT is None:
 			self.PLAY_NEXT = self.PLAYLIST.NEXT
@@ -561,8 +644,89 @@ class Player():
 		if run_mainloop:
 			self.start_loop()
 			self.VIEWER.mainloop()
+	def get_menu(self):
+		menubar = tk.Menu(self.VIEWER)
+		controlls_menu = tk.Menu(menubar, tearoff=0) # tearoff=0 prevents a detachable menu
+		edit_menu = tk.Menu(menubar, tearoff=0)
+		menubar.add_cascade(label="Controlls", menu=controlls_menu)
+		menubar.add_cascade(label="Edit", menu=edit_menu)
+		controlls_menu.add_command(label="Play/Pause", command=lambda: self.pause())
+		controlls_menu.add_command(label="Skip Next", command=lambda: self.playnext())
+		controlls_menu.add_command(label="Fullscreen", command=lambda: self.toggle_fullscreen())
+		controlls_menu.add_separator() # Add a separator line
+		controlls_menu.add_command(label="Toggle Mute", command=lambda: self.PLAYER.audio_toggle_mute())
+		controlls_menu.add_separator() # Add a separator line
+		controlls_menu.add_command(label="Volume Up", command=lambda: self.PLAYER.audio_set_volume(self.PLAYER.audio_get_volume()+10))
+		controlls_menu.add_command(label="Volume Down", command=lambda: self.PLAYER.audio_set_volume(self.PLAYER.audio_get_volume()-10))
+		controlls_menu.add_command(label="Exit", command=exit)
+		edit_menu.add_command(label="Set Active Series", command=edit_active_series)
+		edit_menu.add_command(label="Pirate Bay Downloader", command=lambda: print("NOT IMPLEMENTED"))
+		edit_menu.add_command(label="Metadata Tag Editor", command=lambda: print("NOT IMPLEMENTED"))
+		return menubar
+	def _set_attr(self, key, value):
+		self.__dict__[key] = value
+		config = self.get_config(apply_changes=False)
+		config[key] = value
+		self.save_current_config(config=config)
+		print("Attribute set!", key, value)
+	def get_resolution_nowPlaying(self):
+		try:
+			width, height = self.PLAYER.video_get_size()
+		except Exception as e:
+			print(f"Unable to get resolution: (Nothing playing???")
+			width, height = 1024, 768
+		return width, height
+	def setResolution(self, width=None, height=None, fullscreen=None):
+		if fullscreen is not None:
+			self._set_attr(key='FULLSCREEN', value=fullscreen)
+			if fullscreen:
+				width, height = get_screen_res()
+			else:
+				width, height = self.get_resolution_nowPlaying()
+		else:
+			if not self.FULLSCREEN:
+				w, h = self.get_resolution_nowPlaying()
+			else:
+				w, h = get_screen_res()
+			if width is None:
+				width = w
+			if height is None:
+				height = h
+		self._set_attr(key='WIDTH', value=width)
+		self._set_attr(key='HEIGHT', value=height)
+		print(f"Resolution set: {self.WIDTH}x{self.HEIGHT} ({width}, {height})")
+		return width, height
 	def wait(self, secs=2):
 		time.sleep(secs)
+	def get_scale(self, vidres=None, sres=None):
+		pcnt = 0
+		if vidres is None:
+			vidres = self.get_resolution_nowPlaying()
+		if sres is None:
+			#sres = get_screen_res()
+			sres = self.VIEWER.winfo_width(), self.VIEWER.winfo_height()
+		if vidres[0] >= sres[0] and vidres[1] >= sres[1]:
+			w, h = sres
+			w2, h2 = vidres
+		else:
+			w, h = vidres
+			w2, h2 = sres
+		if w > h:
+			pcnt = w / w2
+		elif h > w:
+			pcnt = h / h2
+		elif h == w:
+			pcnt = w / w2
+		else:
+			print(w, h, w2, h2)
+		return pcnt
+	def set_scale(self, scale=None):
+		if scale is None:
+			scale = self.get_scale()
+		if str(type(scale)) == "<class 'tkinter.Event'>":
+			scale = self.get_scale()
+		self.PLAYER.video_set_scale(scale)
+		self.SCALE = scale
 	def set_active_series(self, series_names=None):
 		self.ACTIVE_SERIES = series_names
 		conf = self.load_config()
@@ -599,6 +763,7 @@ class Player():
 		d['ACTIVE_SERIES'] = self.ACTIVE_SERIES
 		d['VLC_VERBOSITY'] = 0
 		d['CACHE_SIZE'] = 6000
+		d['FULLSCREEN'] = False
 		return d
 	def save_current_config(self, config=None):
 		if config is None:
@@ -612,16 +777,18 @@ class Player():
 		if config is None:
 			print("Configuration dictionary not provided")
 			config = self.__dict__
-		print("Conf:", config)
 		for k in config:
 			if type(k) == tuple:
 				key, v = k
-				self.__dict__[key] = v
-				print("Attribute set:", key, v)
+				self._set_attr(key=key, value=v)
+				#self.__dict__[key] = v
+				#print("Attribute set:", key, v)
 			else:
-				print("k:", k)
-				self.__dict__[k] = config[k]
-				print("Attribute set:", k, config[k])
+				#print("k:", k)
+				self._set_attr(key=k, value=config[k])
+				#self.__dict__[k] = config[k]
+				#print("Attribute set:", k, config[k])
+		print("Config applied!")
 	def event_callback(self, event):
 		e = str(event.type)
 		if e == 'EventType.MediaMPPlaying' or e == 'EventType.MediaPlayerPlaying':
@@ -667,13 +834,29 @@ class Player():
 		self.PLAYER.set_media(media)
 		#self.wait(2)
 		#self.PLAYER.video_set_key_input(self.KEYBOARD)
+		self.set_scale(0.5)
 		self.PLAYER.play()
 		self.NOW_PLAYING = obj
+		self.set_scale()
 		print(f"Now Playing: {self.NOW_PLAYING.__str__()}")
 	def playnext(self, query=None, media_type=None):
 		self.play(self.PLAYLIST.get_next(query=query, media_type=media_type))
 	def stop(self):
 		self.PLAYER.stop()
+	def pause(self):
+		self.PLAYER.pause()
+		print("Pause triggered!")
+	def toggle_fullscreen(self, val=None):
+		if val is None:
+			val = self.PLAYER.get_fullscreen()
+			if val == 1:
+				val = 0
+			elif val == 0:
+				val = 1
+		self.PLAYER.set_fullscreen(val)
+		self.VIEWER.attributes("-fullscreen", val)
+		self.FULLSCREEN = val
+		print("Fullscreen toggled:", self.FULLSCREEN)
 	def loop(self):
 		def get_play_type():
 			types = self.ACTIVE_PLAYBACK_TYPES
@@ -710,6 +893,12 @@ class Player():
 				self.save_current_config()
 				self.RUN = False
 				break
+			elif self.EVENT == 'Fullscreen':
+				if self.FULLSCREEN:
+					self.FULLSCREEN = False
+				else:
+					self.FULLSCREEN = True
+				self.toggle_fullscreen(val=self.FULLSCREEN)
 			elif self.EVENT == 'Mute':
 				if self.MUTE:
 					self.MUTE = False

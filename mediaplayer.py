@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import threading
 import pickle
 import random
@@ -6,9 +8,30 @@ import vlc
 import time
 import sys
 import subprocess
+#P.set_xwindow(UI.WINDOW2['-VID_OUT-'].Widget.winfo_id())
 import tkinter as tk
 
+p = None
+
+"""
+Destop launcher data: ("$USER/.local/share/applications/np.desktop")
+---------------
+[Desktop Entry]
+		Version=1.0
+		Name=NPlayer V2
+		Comment=Media player/downloader/metadata manager for python3 (tkinter)
+		Exec=/home/monkey/mediaplayer.py > ~/.nplayerv2/log.txt
+		Path=/home/monkey/.nplayerv2
+		Icon=/home/monkey/.nplayerv2/Media_Player.png
+		Terminal=false
+		Type=Application
+		Categories=Utility;Development;
+
+"""
+
+
 def edit_active_series():
+	global p
 	def add_item():
 		active = p.ACTIVE_SERIES
 		if type(active) == tuple:
@@ -612,7 +635,7 @@ class Player():
 		self.PLAYER = self.VLC.media_player_new()
 		if new_player_window:
 			self.VIEWER = tk.Tk()
-			self.STATUS_STRINGVAR = tk.Stringvar(self.VIEWER, value=self.STATE)
+			#self.STATUS_STRINGVAR = tk.Stringvar(self.VIEWER, value=self.STATE)
 			self.VIEWER.config(menu=self.get_menu())
 			self.VIEWER.title("Media Player")
 			w, h = get_screen_res()
@@ -834,11 +857,11 @@ class Player():
 		self.PLAYER.set_media(media)
 		#self.wait(2)
 		#self.PLAYER.video_set_key_input(self.KEYBOARD)
-		self.set_scale(0.5)
 		self.PLAYER.play()
 		self.NOW_PLAYING = obj
-		self.set_scale()
 		print(f"Now Playing: {self.NOW_PLAYING.__str__()}")
+		time.sleep(1)
+		self.set_scale()
 	def playnext(self, query=None, media_type=None):
 		self.play(self.PLAYLIST.get_next(query=query, media_type=media_type))
 	def stop(self):

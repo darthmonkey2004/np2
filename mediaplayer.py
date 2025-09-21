@@ -10,7 +10,7 @@ import sys
 import subprocess
 #P.set_xwindow(UI.WINDOW2['-VID_OUT-'].Widget.winfo_id())
 import tkinter as tk
-
+from tkinter import ttk
 p = None
 
 """
@@ -103,6 +103,143 @@ def get_screen_res():
 	w, h = subprocess.check_output("xrandr | grep '*' | xargs | cut -d ' ' -f 1", shell=True).decode().strip().split('x')
 	return int(w), int(h)
 	
+
+class MediaEditor():
+	def __init__(self, obj, rename_file=True):
+		self.RENAME_FILE = rename_file
+		self.obj = obj
+		self.EDITOR = self.get_editor()
+	def get_editor(self):
+		out = {}
+		self.root = tk.Tk()
+		cols = m._get_columns(media_type=self.obj.media_type)
+		for c in cols:
+			out[c] = {}
+			out[c]['label'] = tk.Label(self.root, text=c)
+			out[c]['label'].pack()
+			out[c]['entry'] = tk.Entry(self.root)
+			try:
+				v = self.obj.__dict__[c]
+			except:
+				v = f"Unknown {c.title()}"
+			if v == "":
+				v = f"Unknown {c.title()}"
+			out[c]['entry'].insert(0, v)
+			out[c]['entry'].pack()
+		self.UPDATE_BTN = tk.Button(self.root, text='Update!', command=self.update_object)
+		self.UPDATE_BTN.pack()
+		self.CLOSE_BTN = tk.Button(self.root, text='Exit', command=exit)
+		self.CLOSE_BTN.pack()
+		return out
+	def get_data(self):
+		out = {}
+		cols = list(self.EDITOR.keys())
+		for c in cols:
+			out[c] = self.EDITOR[c]['entry'].get()
+		return out
+	def update_object(self):
+		data = self.get_data()
+		for k in data:
+			self.obj.__dict__[k] = data[k]
+		if self.RENAME_FILE:
+			self.obj.update_filepath(migrate=True)
+		return self.obj
+
+class MediaManager():
+	def __init__(self, playlist=None):
+		if playlist is None:
+			playlist = Player(new_player_window=False).PLAYLIST
+		self.PLAYLIST = playlist
+		self.MEDIA_MANAGER = tk.Tk()
+		self.TREE = {}
+		self.TREE['Series'] = self.get_tree(media_type='Series')
+		self.TREE['Movies'] = self.get_tree(media_type='Movies')
+		try:
+			self.TREE['Music'] = self.get_tree(media_type='Music')
+		except Exception as e:
+			print(f"No music files??? {e}")
+			self.TREE['Music'] = None
+		self.build()
+		self.obj = None
+	def _get_columns(self, media_type='Series'):
+		if media_type == 'Series':
+			names = list(self.PLAYLIST.SERIES.keys())
+			sn = names[0]
+			season = self.PLAYLIST.sort_seasons(sn)[0]
+			en = self.PLAYLIST.sort_episode_numbers(series_name=sn, season=season)[0]
+			return [k for k in list(self.PLAYLIST.SERIES[sn][season][en].__dict__.keys()) if k != 'data']
+		elif media_type == 'Movies':
+			return [k for k in list(list(self.PLAYLIST.MOVIES.values())[0].__dict__.keys()) if k != 'data']
+		elif media_type == 'Music':
+			return ['title', 'youtube_id', 'artist', 'album', 'filepath']
+	def get_tree(self, media_type='Series', columns=None):
+		if columns is None:
+			columns = self._get_columns(media_type=media_type)
+		t = ttk.Treeview(self.MEDIA_MANAGER, show='headings', columns=columns)
+		if media_type == 'Series':
+			t.bind("<<TreeviewSelect>>", self.series_tree_selected)
+		elif media_type == 'Movies':
+			t.bind("<<TreeviewSelect>>", self.movies_tree_selected)
+		elif media_type == 'Music':
+			t.bind("<<TreeviewSelect>>", self.music_tree_selected)
+		for c in columns:
+			t.heading(c, text=c)
+		t.pack(fill="both", expand=True)
+		return t
+	def add_item(self, obj):
+		cols = self._get_columns(media_type=obj.media_type)
+		t = self.TREE[obj.media_type]
+		vals = []
+		for c in cols:
+			try:
+				vals.append(obj.__dict__[c])
+			except:
+				vals.append("Unknown")
+				print("Key not found:", c)
+		t.insert("", tk.END, values=tuple(vals))
+	def build_series_tree(self):
+		for series_name in self.PLAYLIST.SERIES:
+			for season in self.PLAYLIST.sort_seasons(series_name):
+				for en in self.PLAYLIST.sort_episode_numbers(series_name, season):
+					try:
+						obj = self.PLAYLIST.SERIES[series_name][season][en]
+						self.add_item(obj)
+					except Exception as e:
+						print(f"Error adding series object: {e}, {obj.filepath}")
+	def build_movies_tree(self):
+		for title in self.PLAYLIST.MOVIES:
+			obj = self.PLAYLIST.MOVIES[title]
+			self.add_item(obj)
+	def build_music_tree(self):
+		for title in self.PLAYLIST.MUSIC:
+			obj = self.PLAYLIST.MUSIC[title]
+			self.add_item(obj)
+	def build(self):
+		self.build_series_tree()
+		self.build_movies_tree()
+		self.build_music_tree()
+	def series_tree_selected(self, event):
+		d = self.TREE['Series'].item(self.TREE['Series'].selection())
+		vals = d['values']
+		sn = vals[0]
+		s = vals[1]
+		en = vals[2]
+		self.obj = self.PLAYLIST.SERIES[sn][s][en]
+		self.editor = MediaEditor(obj=self.obj)
+		return self.obj
+	def movies_tree_selected(self, event):
+		d = self.TREE['Movies'].item(self.TREE['Movies'].selection())
+		vals = d['values']
+		self.obj = self.PLAYLIST.MOVIES[vals[0]]
+		self.editor = MediaEditor(obj=self.obj)
+		return self.obj
+	def music_tree_selected(self, event):
+		d = self.TREE['Music'].item(self.TREE['Music'].selection())
+		vals = d['values']
+		self.obj = self.PLAYLIST.MUSIC[vals[0]]
+		self.editor = MediaEditor(obj=self.obj)
+		return self.obj
+
 
 class MediaGuesser():
 	def __init__(self, filepath=None):
@@ -200,6 +337,64 @@ class Media():
 		except:
 			self.media_type = MediaGuesser().guess_media_type(filepath=self.filepath)
 			print("Media type not provided! Guessing...", self.media_type)
+	def _update_filepath_series(self):
+		ext = os.path.splitext(self.filepath)[1].split('.')[1]
+		path = os.path.dirname(self.filepath)
+		media_dir = path.split(self.series_name)[0]
+		newdir = os.path.join(media_dir, self.series_name, f"S{self.season}")
+		fname = f"{self.series_name}.S{self.season}E{self.episode_number}.{ext}"
+		return os.path.join(newdir, fname)
+	def _update_filepath_movies(self):
+		ext = os.path.splitext(self.filepath)[1].split('.')[1]
+		dirname = f"{self.title} ({self.year})"
+		media_dir = os.path.join(self.filepath.split('Movies')[0], 'Movies')
+		fname = f"{self.title} ({self.year}).{self.ext}"
+		return os.path.join(media_dir, dirname, fname)
+	def _update_filepath_music(self):
+		ext = os.path.splitext(self.filepath)[1].split('.')[1]
+		l = []
+		l.append(self.title)
+		if self.artist == '':
+			self.artist = 'UNKNOWN_ARTIST'
+		if self.album == '':
+			self.album = 'UNKNOWN_ALBUM'
+		try:
+			l.append(self.artist)
+		except:
+			pass
+		try:
+			l.append(self.album)
+		except:
+			pass
+		try:
+			l.append(self.youtube_id)
+		except:
+			pass
+		f = ".".join(l)
+		fname = f"{f}.{ext}"
+		media_dir = os.path.join(self.filepath.split('Music')[0], 'Music')
+		return os.path.join(media_dir, fname)
+	def update_filepath(self, migrate=False):
+		if self.media_type == 'Series':
+			f = self._update_filepath_series()
+		elif self.media_type == 'Movies':
+			f = self._update_filepath_movies()
+		elif self.media_type == 'Music':
+			f = self._update_filepath_music()
+		if migrate:
+			if self.filepath != f:
+				com = f"mv '{self.filepath}' '{f}'"
+				#print("command:", com)
+				out = subprocess.check_output(com, shell=True).decode().strip()
+				if out == '':
+					self.filepath = f#if successfull, set attribute to new path after migration
+				else:
+					print(f"Error - Move failed! {out}")
+					print("Command was:", com)
+			else:
+				print(f"File names are the same! Old:{self.filepath}, New:{f}")
+				print("aborting file renaming...")
+		return self.filepath
 	def __str__(self):
 		l = []
 		for k in self.data:
@@ -249,6 +444,7 @@ class Playlist():
 			self.ACTIVE_SERIES = list(self._list_series().keys())#default to all in series list, overridden by Player settings.conf
 		self.SERIES = self.get_series(active_series=self.ACTIVE_SERIES)
 		self.MOVIES = self.get_movies()
+		self.MUSIC = self.get_music()
 		self.Guesser = MediaGuesser()
 		self.LAST = None
 		try:
@@ -332,6 +528,39 @@ class Playlist():
 					out[title]['year'] = year
 					out[title]['filepath'] = os.path.join(path, filepath)
 		return out
+	def _list_music(self, title=None, artist=None, album=None):
+		out = {}
+		exts = ['.mp3', '.wav']
+		#files = os.listdir(self.MUSIC_DIR)
+		files = [os.path.join(self.MUSIC_DIR, f) for f in os.listdir(self.MUSIC_DIR)]
+		for filepath in files:
+			ext = os.path.splitext(filepath)[1]
+			if ext in exts:
+				fname = os.path.basename(filepath)
+				if '[' in fname and ']' in fname:
+					title = fname.split(' [')[0]
+					try:
+						ytid = fname.split(' [')[1].split(']')[0]
+					except Exception as e:
+						print(f"{e}: {filepath}")
+						ytid = None
+					out[title] = {}
+					out[title]['title'] = title
+					out[title]['youtube_id'] = ytid
+					out[title]['filepath'] = filepath
+					out[title]['media_type'] = 'Music'
+				else:
+					print("fname:", fname)
+					print(len(fname.split('.')))
+					title, artist, album, ytid, ext = fname.split('.')
+					out[title] = {}
+					out[title]['title'] = title
+					out[title]['artist'] = artist
+					out[title]['album'] = album
+					out[title]['youtube_id'] = ytid
+					out[title]['media_type'] = 'Music'
+					out[title]['filepath'] = filepath
+		return out
 	def _get_list_range(self, start_num, end_num):
 		l = []
 		for i in range(start_num, end_num+1):
@@ -341,7 +570,18 @@ class Playlist():
 		objects = {}
 		movies = self._list_movies()
 		for title in movies:
-			objects[title] = Media(data=movies[title])
+			data = movies[title]
+			data['media_type'] = 'Movies'
+			objects[title] = Media(data=data)
+		return objects
+	def get_music(self, title=None, artist=None, album=None):
+		objects = {}
+		music = self._list_music()
+		for filepath in music:
+			title = music[filepath]['title']
+			data = music[title]
+			data['media_type'] = 'Music'
+			objects[title] = Media(data=music[title])
 		return objects
 	def get_series(self, filter_by_name=None, active_series=None):
 		"""
@@ -367,6 +607,7 @@ class Playlist():
 				objects[series_name][season] = {}
 				for episode_number in series[series_name][season]:
 					d = series[series_name][season][episode_number]
+					#d['media_type'] = 'Series'
 					objects[series_name][season][episode_number] = Media(data=d)
 		if filter_by_name is not None:
 			out = {}
@@ -641,6 +882,9 @@ class Player():
 			w, h = get_screen_res()
 			self.VIEWER.geometry(f"{w}x{h}")
 			self.VIEWER.bind("<Configure>", self.set_scale)
+			iconpath = os.path.join(self.DATA_DIR, "Media_Player.png")
+			self.VIEWERICON = tk.PhotoImage(file=iconpath)
+			self.VIEWER.iconphoto(True, self.VIEWERICON)
 			frame = tk.Frame(self.VIEWER, width=w, height=h, bg='black')
 			#frame = tk.Frame(self.VIEWER, width=self.WIDTH, height=self.HEIGHT, bg='black')
 			#frame.pack(fill="both", expand=True)
@@ -683,9 +927,13 @@ class Player():
 		controlls_menu.add_command(label="Volume Down", command=lambda: self.PLAYER.audio_set_volume(self.PLAYER.audio_get_volume()-10))
 		controlls_menu.add_command(label="Exit", command=exit)
 		edit_menu.add_command(label="Set Active Series", command=edit_active_series)
+		edit_menu.add_command(label="Media Manager", command=self.run_media_manager)
 		edit_menu.add_command(label="Pirate Bay Downloader", command=lambda: print("NOT IMPLEMENTED"))
 		edit_menu.add_command(label="Metadata Tag Editor", command=lambda: print("NOT IMPLEMENTED"))
 		return menubar
+	def run_media_manager(self):
+		self.MEDIA_MANAGER = MediaManager(playlist=self.PLAYLIST)
+		print("Media manager loaded!")
 	def _set_attr(self, key, value):
 		self.__dict__[key] = value
 		config = self.get_config(apply_changes=False)

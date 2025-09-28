@@ -10,7 +10,7 @@ import sys
 import subprocess
 #P.set_xwindow(UI.WINDOW2['-VID_OUT-'].Widget.winfo_id())
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog
 p = None
 
 """
@@ -105,14 +105,14 @@ def get_screen_res():
 	
 
 class MediaEditor():
-	def __init__(self, obj, rename_file=True):
+	def __init__(self, obj, cols, rename_file=True):
 		self.RENAME_FILE = rename_file
 		self.obj = obj
-		self.EDITOR = self.get_editor()
-	def get_editor(self):
+		self.EDITOR = self.get_editor(cols=cols)
+	def get_editor(self, cols):
 		out = {}
 		self.root = tk.Tk()
-		cols = m._get_columns(media_type=self.obj.media_type)
+		#cols = m._get_columns(media_type=self.obj.media_type)
 		for c in cols:
 			out[c] = {}
 			out[c]['label'] = tk.Label(self.root, text=c)
@@ -225,7 +225,8 @@ class MediaManager():
 		s = vals[1]
 		en = vals[2]
 		self.obj = self.PLAYLIST.SERIES[sn][s][en]
-		self.editor = MediaEditor(obj=self.obj)
+		cols = self._get_columns(media_type=self.obj.media_type)
+		self.editor = MediaEditor(obj=self.obj, cols=cols)
 		return self.obj
 	def movies_tree_selected(self, event):
 		d = self.TREE['Movies'].item(self.TREE['Movies'].selection())
@@ -252,29 +253,16 @@ class MediaGuesser():
 			l.append(i)
 		return l
 	def _get_seasons(self):
+		l = sl = self._get_list(1, 100)
+		eps = [f"E{i}" for i in l]
+		eps += [f"S0{i}" for i in self._get_list(1, 9)]
+		seasons = [f"S{i}" for i in l]
+		seasons += [f"S0{i}" for i in self._get_list(1, 9)]
 		out = []
-		sl = self._get_list(0, 333)
-		el = sl
-		for s in sl:
-			if len(str(s)) == 1:
-				s2 = f"S0{s}"
-				s1 = f"S{s}"
-			else:
-				s2 = f"S{s}"
-				s1 = None
-			for e in el:
-				if len(str(e)) == 1:
-					e2 = f"E0{e}"
-					e1 = f"E{e}"
-				else:
-					e2 = f"E{e}"
-					e1 = None
-				if e2 is not None and s2 is not None:
-					out.append(f"{s2}{e2}")
-				if e1 is not None and s1 is not None:
-					out.append(f"{s1}{e1}")
+		for s in seasons:
+			for e in eps:
+				out.append(f"{s}{e}")
 		return out
-
 	def se_isin(self, filepath, return_data=False):
 		for s in self._get_seasons():
 			if s in filepath:
@@ -421,7 +409,7 @@ class Media():
 
 
 class Playlist():
-	def __init__(self, media_path='/media/monkey/usbhd/Media', playback_types=None, active_series=None):
+	def __init__(self, media_path='/media/monkey/usbhd/Media', playlist_file=None, playback_types=None, active_series=None):
 		"""
 		TDDO - add episode_number to movie files for ordering list in a set/trilogy/etc.
 		TODO - function - auto determine media type
@@ -438,19 +426,57 @@ class Playlist():
 		self.SERIES_DIR = os.path.join(self.MEDIA_DIR, 'Series')
 		self.MOVIES_DIR = os.path.join(self.MEDIA_DIR, 'Movies')
 		self.MUSIC_DIR = os.path.join(self.MEDIA_DIR, 'Music')
-		if active_series is not None:#if active series list provided (i.e. loaded from Player settings)...
-			self.ACTIVE_SERIES = active_series
-		else:
-			self.ACTIVE_SERIES = list(self._list_series().keys())#default to all in series list, overridden by Player settings.conf
-		self.SERIES = self.get_series(active_series=self.ACTIVE_SERIES)
-		self.MOVIES = self.get_movies()
-		self.MUSIC = self.get_music()
 		self.Guesser = MediaGuesser()
+		if playlist_file is not None:
+			self.apply_playlist(playlistfile=playlist_file)
+		else:
+			if active_series is not None:#if active series list provided (i.e. loaded from Player settings)...
+				self.ACTIVE_SERIES = active_series
+			else:
+				self.ACTIVE_SERIES = list(self._list_series().keys())#default to all in series list, overridden by Player settings.conf
+			self.SERIES = self.get_series(active_series=self.ACTIVE_SERIES)
+			self.MOVIES = self.get_movies()
+			self.MUSIC = self.get_music()
+			self.OTHER = {}
 		self.LAST = None
 		try:
 			self.NEXT = self.get_next()
 		except Exception as e:
 			self.NEXT = None
+	def apply_playlist(self, playlistfile='testplaylist.txt'):
+		self.SERIES = {}
+		self.MOVIES = {}
+		self.MUSIC = {}
+		self.OTHER = {}
+		for obj in [Media(d) for d in list(self.load_playlist_file(playlistfile).values())]:
+			names = list(self.SERIES.keys())
+			if obj.media_type == 'Series':
+				if obj.series_name in names:
+					self.SERIES[obj.series_name][obj.season][obj.episode_number] = obj
+				else:
+					self.SERIES[obj.series_name] = {}
+					self.SERIES[obj.series_name][obj.season] = {}
+					self.SERIES[obj.series_name][obj.season][obj.episode_number] = obj
+			elif obj.media_type == 'Movies':
+				self.MOVIES[obj.title] = obj
+			elif obj.media_type == 'Music':
+				self.MUSIC[obj.artist][obj.title] = obj
+			else:
+				self.OTHER[obj.filepath] = obj
+		print("Done!")
+	def load_playlist_file(self, filepath):
+		files = self.read_playlist_file(filepath)
+		out = {}
+		for filepath in files:
+			out[filepath] = self.Guesser.get_info_from_filepath(filepath)
+		return out
+	def read_playlist_file(self, filepath=None):
+		if filepath is None:
+			filepath = self.PLAYLIST_FILE
+		f = open(filepath, 'r')
+		data = f.read().splitlines()
+		f.close()
+		return data
 	def _guess_media_type(self, filepath):
 		return self.Guesser.guess_media_type(filepath)
 	def _get_info(self, filepath):
@@ -847,7 +873,7 @@ class Playlist():
 
 
 class Player():
-	def __init__(self, width=None, height=None, cache_size=6000, scale_video=1.0, run_mainloop=False, new_player_window=True, vlc_verbosity=0, fullscreen=False):
+	def __init__(self, width=None, height=None, cache_size=6000, scale_video=1.0, run_mainloop=False, new_player_window=True, vlc_verbosity=0, fullscreen=False, playlistfile=None):
 		"""
 		Main player class
 		args:
@@ -904,10 +930,19 @@ class Player():
 			self.save_current_config(config)
 		#print("Allowing vlc to load, 5 seconds!")
 		#self.wait(5)
-		self.PLAYLIST = Playlist(active_series=self.ACTIVE_SERIES)
+		self.PLAYLISTFILE = playlistfile
+		if playlistfile is not None:
+			self.PLAYLIST = self.load_playlist(playlistfile)
+		else:
+			self.PLAYLIST = Playlist(active_series=self.ACTIVE_SERIES)
+		if self.PLAYLISTFILE is None:
+			self.PLAYLISTFILE = 'testplaylist.txt'
 		if self.PLAY_NEXT is None:
-			self.PLAY_NEXT = self.PLAYLIST.NEXT
-		self.ACTIVE_SERIES = self.PLAYLIST.ACTIVE_SERIES
+			if self.PLAYLIST.NEXT is None:
+				pass
+			else:
+				self.PLAY_NEXT = self.PLAYLIST.NEXT
+			self.ACTIVE_SERIES = self.PLAYLIST.OTHER
 		if run_mainloop:
 			self.start_loop()
 			self.VIEWER.mainloop()
@@ -915,8 +950,10 @@ class Player():
 		menubar = tk.Menu(self.VIEWER)
 		controlls_menu = tk.Menu(menubar, tearoff=0) # tearoff=0 prevents a detachable menu
 		edit_menu = tk.Menu(menubar, tearoff=0)
+		playlist_menu = tk.Menu(menubar, tearoff=0)
 		menubar.add_cascade(label="Controlls", menu=controlls_menu)
 		menubar.add_cascade(label="Edit", menu=edit_menu)
+		menubar.add_cascade(label="Playlist", menu=playlist_menu)
 		controlls_menu.add_command(label="Play/Pause", command=lambda: self.pause())
 		controlls_menu.add_command(label="Skip Next", command=lambda: self.playnext())
 		controlls_menu.add_command(label="Fullscreen", command=lambda: self.toggle_fullscreen())
@@ -930,6 +967,11 @@ class Player():
 		edit_menu.add_command(label="Media Manager", command=self.run_media_manager)
 		edit_menu.add_command(label="Pirate Bay Downloader", command=lambda: print("NOT IMPLEMENTED"))
 		edit_menu.add_command(label="Metadata Tag Editor", command=lambda: print("NOT IMPLEMENTED"))
+		playlist_menu.add_command(label="Load Playlist File...", command=self.load_playlist)
+		playlist_menu.add_command(label="Export Current Playlist...", command=self.export_current_playlist)
+		playlist_menu.add_separator()
+		playlist_menu.add_command(label="Open File(s)...", command=self.open_files)
+		playlist_menu.add_command(label="Open Directory...", command=self.open_directory)
 		return menubar
 	def run_media_manager(self):
 		self.MEDIA_MANAGER = MediaManager(playlist=self.PLAYLIST)
@@ -1128,6 +1170,29 @@ class Player():
 		self.VIEWER.attributes("-fullscreen", val)
 		self.FULLSCREEN = val
 		print("Fullscreen toggled:", self.FULLSCREEN)
+	def write_playlist_file(self, playlistfile=None, objects=[], filepaths=[], return_playlist_object=False):
+		if filepaths == []:
+			filepaths = [o.filepath for o in objects]
+		data = "\n".join(filepaths)	
+		if playlistfile is None:
+			playlistfile = filedialog.asksaveasfilename()
+		try:
+			f = open(playlistfile, 'w')
+			f.write(data)
+			f.close()
+			print("Playlist file written!")
+			self.PLAYLISTFILE = playlistfile
+			if return_playlist_object:
+				self.PLAYLIST = Playlist(playlist_file=playlistfile)
+				return self.PLAYLIST
+			else:
+				return True
+		except Exception as e:
+			print(f"Error writing playlist file: {e}")
+			if return_playlist_object:
+				return None
+			else:
+				return False
 	def loop(self):
 		def get_play_type():
 			types = self.ACTIVE_PLAYBACK_TYPES
@@ -1177,6 +1242,44 @@ class Player():
 					self.MUTE = True
 				self.PLAYER.audio_set_mute(self.MUTE)
 				print("Mute toggled:", self.MUTE)
+			elif self.EVENT == 'SAVE_CURRENT_PLAYLIST':
+				self.export_current_playlist()
+			elif self.EVENT == 'LOAD_PLAYLIST':
+				self.load_playlist()
+			elif self.EVENT == 'OPEN_FILES':
+				self.open_files()
+			elif self.EVENT == 'OPEN_DIRECTORY':
+				self.open_directory()
+	def load_playlist(self, playlistfile=None, play_on_load=True):
+		if playlistfile is not None:
+			self.PLAYLISTFILE = playlistfile
+		else:
+			self.PLAYLISTFILE = filedialog.askopenfilename()
+		self.PLAYLIST = Playlist(playlist_file=self.PLAYLISTFILE)
+		if play_on_load:
+			self.playnext()
+		print("Playlist loaded!")
+	def open_files(self, files=None, play_on_load=True):
+		if files is None:
+			files = filedialog.askopenfilenames()
+		self.PLAYLIST = self.write_playlist_file(playlistfile=self.PLAYLISTFILE, filepaths=files, return_playlist_object=True)
+		if play_on_load:
+			self.playnext()
+		print("Files loaded!")
+	def open_directory(self, path=None, play_on_load=True):
+		if path is None:
+			path = filedialog.askdirectory()
+		files = [os.path.join(path, f) for f in os.listdir(path)]
+		self.PLAYLIST = self.write_playlist_file(playlistfile=self.PLAYLISTFILE, filepaths=files, return_playlist_object=True)
+		if play_on_load:
+			self.playnext()
+		print("Directory loaded!")
+	def export_current_playlist(self):
+		ret = self.write_playlist_file(playlistfile=self.PLAYLISTFILE, objects=self.PLAYLIST._get_all(), return_playlist_object=False)
+		if ret:
+			print("Playlist exported!")
+		else:
+			print("Playlist export failed!")
 	def start_loop(self, daemon=True):
 		self.THREAD = threading.Thread(target=self.loop)
 		self.THREAD.daemon = daemon
@@ -1190,11 +1293,17 @@ if __name__ == "__main__":
 	try:
 		media_type = sys.argv[1]
 	except:
-		media_type = 'Series'
+		media_type = None
 	try:
 		query = sys.argv[2]
 	except:
 		query = None
-	p = Player(run_mainloop=True)
+	if '.txt' in str(query) or media_type == 'playlist':
+		p = Player(run_mainloop=True, playlistfile=query)
+	else:
+		if media_type is None:
+			p = Player(run_mainloop=True)
+		else:
+			p = Player(run_mainloop=True, media_type=media_type)
 
 

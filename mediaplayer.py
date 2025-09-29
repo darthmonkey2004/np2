@@ -30,74 +30,150 @@ Destop launcher data: ("$USER/.local/share/applications/np.desktop")
 """
 
 
-def edit_active_series():
-	global p
-	def add_item():
-		active = p.ACTIVE_SERIES
-		if type(active) == tuple:
-			active = list(active)
-		indexes = listbox_all_series.curselection()
-		for idx in indexes:
-			item = listbox_all_series.get(idx)
-			if item not in active:
-				listbox_active_series.insert(tk.END, item)
-				active.append(item)
-			else:
-				print("Item already in active:", item)
-		update_list(listbox_active_series, active)
-		p.set_active_series(active)
-		return active
-	def del_item():
-		indexes = listbox_active_series.curselection()
-		print("indexes:", indexes)
-		for idx in indexes:
-			item = listbox_active_series.get(idx)
-			if item in active:
-				idx = active.index(item)
-				_ = active.pop(idx)
-			else:
-				print("Item not in active???", item)
-		update_list(listbox_active_series, active)
-		p.set_active_series(active)
-		return active
-	def update_active(active_items=None):
-		if active_items is None:
-			active_items = listbox_active_series.get(0, tk.END)
-			if len(active_items) != len(p.ACTIVE_SERIES):
-				print("Length is different! Updating player option ('ACTIVE_SERIES')...")
-				p.set_active_series(series_names=active_items)
-		root.destroy()
-		return active_items
-	def update_list(lb, items):
-		lb.delete(0, tk.END)
-		for item in items:
-			lb.insert(tk.END, item)
-	if p is None:
-		p = Player()
-	active = p.ACTIVE_SERIES
-	root = tk.Tk()
-	active_frame = tk.Frame(root)
-	all_frame = tk.Frame(root)
-	txt_active = tk.Label(active_frame, text='Active Series Names')
-	txt_active.pack(side='top')
-	txt_all = tk.Label(all_frame, text='All Series')
-	txt_all.pack(side='top')
-	listbox_active_series = tk.Listbox(active_frame)
-	listbox_all_series = tk.Listbox(all_frame)
-	listbox_active_series.pack(side='top')
-	listbox_all_series.pack(side='top')
-	btn_add = tk.Button(all_frame, text='Add!', command=add_item)
-	btn_add.pack(side='top')
-	btn_del = tk.Button(active_frame, text='Del!', command=del_item)
-	btn_del.pack(side='top')
-	btn_ok = tk.Button(root, text='Ok!', command=update_active)
-	active_frame.pack(side='left')
-	all_frame.pack(side='right')
-	btn_ok.pack(side='right')
-	active = p.ACTIVE_SERIES
-	update_list(listbox_active_series, active)
-	all_series = list(p.PLAYLIST._list_series().keys())
-	update_list(listbox_all_series, all_series)
+class DataPoller():
+	"""
+	this class handles polling the player object to retreive playback states
+	and media details.
+	poll() - grabs all data
+	get(key): returns a specific value from all data.
+	The following still need finished...
+
+	audio_setters = ['audio_output_device_set', 'audio_output_set', 'audio_set_callbacks', 'audio_set_channel', 'audio_set_delay', 'audio_set_format', 'audio_set_format_callbacks', 'audio_set_mute', 'audio_set_track', 'audio_set_volume', 'audio_set_volume_callback', 'audio_toggle_mute']
+	setters = ['set_agl', 'set_android_context', 'set_chapter', 'set_equalizer', 'set_evas_object', 'set_fullscreen', 'set_hwnd', 'set_media', 'set_mrl', 'set_nsobject', 'set_pause', 'set_position', 'set_rate', 'set_renderer', 'set_role', 'set_time', 'set_title', 'set_video_title_display', 'set_xwindow']
+	video_getters = ['get_full_chapter_descriptions', 'get_full_chapter_descriptions', 'get_full_title_descriptions', 'video_get_marquee_int', video_get_marquee_string', 'video_get_title_description']
+	"""
+	def __init__(self, player):
+		self.player = player
+		self.DATA = None
+	def poll(self):
+		"""
+		grabs all data and organizes into dictionary. to filter, use 'get(<filter_query>)'
+		"""
+		out = {}
+		out['video'] = self.get_video_data()
+		out['audio'] = self.get_audio_data()
+		out['player'] = self.get_player_data()
+		return out
+	def get_player_data(self, export=False):
+		"""
+		gets player data from current player object.
+		"""
+		player_getters = ['get_agl', 'get_chapter', 'get_chapter_count', 'get_chapter_count_for_title', 'get_fps', 'get_full_chapter_descriptions', 'get_full_title_descriptions', 'get_fullscreen', 'get_hwnd', 'get_instance', 'get_length', 'get_media', 'get_nsobject', 'get_position', 'get_rate', 'get_role', 'get_state', 'get_time', 'get_title', 'get_title_count', 'get_xwindow']
+		out = {}
+		for g in player_getters:
+			if g == 'get_agl':
+				f = self.player.get_agl
+			elif g == 'get_chapter':
+				f = self.player.get_chapter
+			elif g == 'get_chapter_count':
+				f = self.player.get_chapter_count
+			elif g == 'get_chapter_count_for_title':
+				f = self.player.get_chapter_count
+			elif g == 'get_fps':
+				f = self.player.get_fps
+			elif g == 'get_fullscreen':
+				f = self.player.get_fullscreen
+			elif g == 'get_hwnd':
+				f = self.player.get_hwnd
+			elif g == 'get_length':
+				f = self.player.get_length
+			elif g == 'get_media':
+				f = self.player.get_media
+			elif g == 'get_nsobject':
+				f = self.player.get_nsobject
+			elif g == 'get_position':
+				f = self.player.get_position
+			elif g == 'get_rate':
+				f = self.player.get_rate
+			elif g == 'get_role':
+				f = self.player.get_role
+			elif g == 'get_state':
+				f = self.player.get_state
+			elif g == 'get_time':
+				f = self.player.get_time
+			elif g == 'get_title':
+				f = self.player.get_title
+			elif g == 'get_title_count':
+				f = self.player.get_title_count
+			elif g == 'get_xwindow':
+				f = self.player.get_xwindow
+			try:
+				out[g] = f()
+			except Exception as e:
+				out[g] = f"FAILED:{e}"
+				print("error getting player data:", e)
+		if export:#if exporting, delete live Media obect from dict (un-pickle-able)
+			del out['get_media']
+		return out
+	def get_audio_data(self, export=False):
+		"""
+		gets audio data from currently playing player object
+		"""
+		audio_getters = ['audio_get_track_count', 'audio_get_track_description', 'audio_get_volume', 'audio_output_device_enum', 'audio_output_device_get']
+		out = {}
+		for g in audio_getters:
+			if g == 'audio_get_track_count':
+				f = self.player.audio_get_track_count
+			elif g == 'audio_get_track_description':
+				f = self.player.audio_get_track_description
+			elif g == 'audio_get_volume':
+				f = self.player.audio_get_volume
+			elif g == 'audio_output_device_enum':
+				f = self.player.audio_output_device_enum
+			elif g == 'audio_output_device_get':
+				f = self.player.audio_output_device_get
+			out[g] = f()
+		if export:#if exporting, remove live audio obect (like above)
+			del out['audio_output_device_enum']
+		return out
+	def get_video_data(self):
+		"""
+		gets video data from currently playing player object.
+		"""
+		video_getters = ['video_get_marquee_int', 'video_get_marquee_string', 'video_get_scale', 'video_get_size', 'video_get_spu', 'video_get_spu_count', 'video_get_spu_delay', 'video_get_spu_description', 'video_get_teletext', 'video_get_title_description', 'video_get_track', 'video_get_track_count', 'video_get_track_description', 'video_get_width']
+		out = {}
+		f = None
+		for g in video_getters:
+			if g == 'video_get_scale':
+				f = self.player.video_get_scale
+			elif g == 'video_get_size':
+				f = self.player.video_get_size
+			elif g == 'video_get_spu':
+				f = self.player.video_get_spu
+			elif g == 'video_get_spu_count':
+				f = self.player.video_get_spu_count
+			elif g == 'video_get_spu_delay':
+				f = self.player.video_get_spu_delay
+			elif g == 'video_get_spu_description':
+				f = self.player.video_get_spu_description
+			elif g == 'video_get_teletext':
+				f = self.player.video_get_teletext
+			elif g == 'video_get_track':
+				f = self.player.video_get_track
+			elif g == 'video_get_track_count':
+				f = self.player.video_get_track_count
+			elif g == 'video_get_track_description':
+				f = self.player.video_get_track_description
+			elif g == 'video_get_width':
+				f = self.player.video_get_width
+			if f is not None:
+				out[g] = f()
+		return out
+	def get(self, key):
+		"""
+		vlc player class getter
+		filters .data by key to return one or more filtered parameters.
+		"""
+		data = self.poll()
+		if key in list(data['audio'].keys()):
+			return data['audio'][key]
+		elif key in list(data['video'].keys()):
+			return data['video'][key]
+		elif key in list(data['player'].keys()):
+			return data['player'][key]
+		else:
+			print(f"Unknown key: {key}!")
+			return None
 
 def get_screen_res():
 	w, h = subprocess.check_output("xrandr | grep '*' | xargs | cut -d ' ' -f 1", shell=True).decode().strip().split('x')
@@ -148,8 +224,8 @@ class MediaEditor():
 class MediaManager():
 	def __init__(self, playlist=None):
 		if playlist is None:
-			playlist = Player(new_player_window=False).PLAYLIST
-		self.PLAYLIST = playlist
+			playlist = self.ayer(new_player_window=False).PLAYLIST
+		self.PLAYLIST = self.aylist
 		self.MEDIA_MANAGER = tk.Tk()
 		self.TREE = {}
 		self.TREE['Series'] = self.get_tree(media_type='Series')
@@ -328,7 +404,7 @@ class Media():
 	def _update_filepath_series(self):
 		ext = os.path.splitext(self.filepath)[1].split('.')[1]
 		path = os.path.dirname(self.filepath)
-		media_dir = path.split(self.series_name)[0]
+		media_dir = self.th.split(self.series_name)[0]
 		newdir = os.path.join(media_dir, self.series_name, f"S{self.season}")
 		fname = f"{self.series_name}.S{self.season}E{self.episode_number}.{ext}"
 		return os.path.join(newdir, fname)
@@ -557,7 +633,6 @@ class Playlist():
 	def _list_music(self, title=None, artist=None, album=None):
 		out = {}
 		exts = ['.mp3', '.wav']
-		#files = os.listdir(self.MUSIC_DIR)
 		files = [os.path.join(self.MUSIC_DIR, f) for f in os.listdir(self.MUSIC_DIR)]
 		for filepath in files:
 			ext = os.path.splitext(filepath)[1]
@@ -576,8 +651,6 @@ class Playlist():
 					out[title]['filepath'] = filepath
 					out[title]['media_type'] = 'Music'
 				else:
-					print("fname:", fname)
-					print(len(fname.split('.')))
 					title, artist, album, ytid, ext = fname.split('.')
 					out[title] = {}
 					out[title]['title'] = title
@@ -831,13 +904,15 @@ class Playlist():
 		ens = self._get_episodes(series_name=series_name, season=season)
 		eidx = ens.index(episode_number)+1
 		if len(ens) == eidx:
+			print(f"episodes in {series_name}:{season} - {len(ens)}")
+			print(f"Current index of episode {episode_number}(+1): {eidx}")
 			print("Reached end of season!")
 			season = self.get_next_season(series_name=series_name, season=season)
 			ens = self._get_episodes(series_name=series_name, season=season)
 			en = ens[0]
 		else:
 			en = ens[eidx]
-		print("Set episode:", season, en)
+		print("Set episode:", series_name, season, en)
 		return self.SERIES[series_name][season][en]
 
 
@@ -856,7 +931,7 @@ class Playlist():
 			except Exception as e:
 				series_name = self.get_random_series_name()
 				obj = self.get_last_episode(series_name=series_name)
-				print(f"Error - {e}")
+				print(f"get_next_series - Error: couldn't retreive last entry with series {series_name} - {e}")
 		return self.get_next_episode(series_name=obj.series_name, season=obj.season, episode_number=obj.episode_number)		
 
 	def get_next(self, query=None, media_type=None):
@@ -873,7 +948,7 @@ class Playlist():
 
 
 class Player():
-	def __init__(self, width=None, height=None, cache_size=6000, scale_video=1.0, run_mainloop=False, new_player_window=True, vlc_verbosity=0, fullscreen=False, playlistfile=None):
+	def __init__(self, width=None, height=None, cache_size=6000, scale_video=1.0, run_mainloop=False, new_player_window=True, vlc_verbosity=0, fullscreen=False, playlistfile=None, seek_percentage=0.1):
 		"""
 		Main player class
 		args:
@@ -881,6 +956,12 @@ class Player():
 			run_mainloop - if True, runs tkinter.Tk().mainloop after all else is done. Currently unused (default=False)
 			new_player_window - whether or not to show player window. set to False to init player with no tkinter viewer window
 		"""
+		self.NOW_PLAYING = None
+		self.MUTE = False
+		self.SHUFFLE_TYPES = ['Series', 'Random', 'Movies', 'All', 'Music']
+		self.ALL_PLAYBACK_TYPES = ['Series', 'Movies', 'Music']
+		self.ACTIVE_PLAYBACK_TYPES = ['Series']
+		self.SEEK = seek_percentage
 		self.SCALE = scale_video
 		self.FULLSCREEN = fullscreen
 		self.PLAY_NEXT = None
@@ -902,16 +983,15 @@ class Player():
 		self.PLAYER = self.VLC.media_player_new()
 		if new_player_window:
 			self.VIEWER = tk.Tk()
-			#self.STATUS_STRINGVAR = tk.Stringvar(self.VIEWER, value=self.STATE)
 			self.VIEWER.config(menu=self.get_menu())
 			self.VIEWER.title("Media Player")
-			w, h = get_screen_res()
-			self.VIEWER.geometry(f"{w}x{h}")
+			self.WIDTH, self.HEIGHT = get_screen_res()
+			self.VIEWER.geometry(f"{self.WIDTH}x{self.HEIGHT}")
 			self.VIEWER.bind("<Configure>", self.set_scale)
 			iconpath = os.path.join(self.DATA_DIR, "Media_Player.png")
 			self.VIEWERICON = tk.PhotoImage(file=iconpath)
 			self.VIEWER.iconphoto(True, self.VIEWERICON)
-			frame = tk.Frame(self.VIEWER, width=w, height=h, bg='black')
+			frame = tk.Frame(self.VIEWER, width=self.WIDTH, height=self.HEIGHT, bg='black')
 			#frame = tk.Frame(self.VIEWER, width=self.WIDTH, height=self.HEIGHT, bg='black')
 			#frame.pack(fill="both", expand=True)
 			frame.pack()
@@ -926,10 +1006,10 @@ class Player():
 		try:
 			self.ACTIVE_SERIES = config['ACTIVE_SERIES']
 		except:
-			config['ACTIVE_SERIES'] = self.ACTIVE_SERIES
+			#if active series names attribute is not in config, re-init with entire series list.
+			print("ACTIVE_SERIES key not in settings file! Defaulting to 'all'...")
+			config['ACTIVE_SERIES'] = Playlist()._list_series().keys()
 			self.save_current_config(config)
-		#print("Allowing vlc to load, 5 seconds!")
-		#self.wait(5)
 		self.PLAYLISTFILE = playlistfile
 		if playlistfile is not None:
 			self.PLAYLIST = self.load_playlist(playlistfile)
@@ -943,12 +1023,17 @@ class Player():
 			else:
 				self.PLAY_NEXT = self.PLAYLIST.NEXT
 			self.ACTIVE_SERIES = self.PLAYLIST.OTHER
+		self.Poller = DataPoller(player=self.PLAYER)
 		if run_mainloop:
 			self.start_loop()
 			self.VIEWER.mainloop()
+	def get_player_data(self):
+		return self.Poller.poll()
+	def get_player_attr(self, key):
+		return self.Poller.get(key=key)
 	def get_menu(self):
 		menubar = tk.Menu(self.VIEWER)
-		controlls_menu = tk.Menu(menubar, tearoff=0) # tearoff=0 prevents a detachable menu
+		controlls_menu = tk.Menu(menubar, tearoff=1) # tearoff=1 means menu can be dragged to a floating object.
 		edit_menu = tk.Menu(menubar, tearoff=0)
 		playlist_menu = tk.Menu(menubar, tearoff=0)
 		menubar.add_cascade(label="Controlls", menu=controlls_menu)
@@ -956,6 +1041,8 @@ class Player():
 		menubar.add_cascade(label="Playlist", menu=playlist_menu)
 		controlls_menu.add_command(label="Play/Pause", command=lambda: self.pause())
 		controlls_menu.add_command(label="Skip Next", command=lambda: self.playnext())
+		controlls_menu.add_command(label="Seek Forward", command=self.seek_fwd)
+		controlls_menu.add_command(label="Seek Backwards", command=self.seek_rev)
 		controlls_menu.add_command(label="Fullscreen", command=lambda: self.toggle_fullscreen())
 		controlls_menu.add_separator() # Add a separator line
 		controlls_menu.add_command(label="Toggle Mute", command=lambda: self.PLAYER.audio_toggle_mute())
@@ -963,7 +1050,7 @@ class Player():
 		controlls_menu.add_command(label="Volume Up", command=lambda: self.PLAYER.audio_set_volume(self.PLAYER.audio_get_volume()+10))
 		controlls_menu.add_command(label="Volume Down", command=lambda: self.PLAYER.audio_set_volume(self.PLAYER.audio_get_volume()-10))
 		controlls_menu.add_command(label="Exit", command=exit)
-		edit_menu.add_command(label="Set Active Series", command=edit_active_series)
+		edit_menu.add_command(label="Set Active Series", command=self.edit_active_series)
 		edit_menu.add_command(label="Media Manager", command=self.run_media_manager)
 		edit_menu.add_command(label="Pirate Bay Downloader", command=lambda: print("NOT IMPLEMENTED"))
 		edit_menu.add_command(label="Metadata Tag Editor", command=lambda: print("NOT IMPLEMENTED"))
@@ -976,35 +1063,34 @@ class Player():
 	def run_media_manager(self):
 		self.MEDIA_MANAGER = MediaManager(playlist=self.PLAYLIST)
 		print("Media manager loaded!")
-	def _set_attr(self, key, value):
-		self.__dict__[key] = value
-		config = self.get_config(apply_changes=False)
-		config[key] = value
-		self.save_current_config(config=config)
-		print("Attribute set!", key, value)
+	def _set_attr(self, key, value, write_config_file=False):
+		if value is None:
+			print(f"_set_attr received a value of None for key {key}! Skipping...")
+			return False
+		else:
+			self.__dict__[key] = value
+			config = self.get_config(apply_changes=False)
+			config[key] = value
+			if write_config_file:
+				print("_set_attr() - write_config_file=True, saving current config!")
+				self.save_current_config(config=config)
+			print("Attribute set!", key, value)
+			return True
 	def get_resolution_nowPlaying(self):
 		try:
 			width, height = self.PLAYER.video_get_size()
 		except Exception as e:
 			print(f"Unable to get resolution: (Nothing playing???")
-			width, height = 1024, 768
+			width, height = self.WIDTH, self.HEIGHT
 		return width, height
 	def setResolution(self, width=None, height=None, fullscreen=None):
 		if fullscreen is not None:
 			self._set_attr(key='FULLSCREEN', value=fullscreen)
-			if fullscreen:
-				width, height = get_screen_res()
-			else:
-				width, height = self.get_resolution_nowPlaying()
-		else:
-			if not self.FULLSCREEN:
-				w, h = self.get_resolution_nowPlaying()
-			else:
-				w, h = get_screen_res()
-			if width is None:
-				width = w
-			if height is None:
-				height = h
+		width, height = self.WIDTH, self.HEIGHT
+		if width is None:
+			width = self.get_screen_res()[0]
+		if height is None:
+			height = self.get_screen_res()[1]
 		self._set_attr(key='WIDTH', value=width)
 		self._set_attr(key='HEIGHT', value=height)
 		print(f"Resolution set: {self.WIDTH}x{self.HEIGHT} ({width}, {height})")
@@ -1055,7 +1141,7 @@ class Player():
 		try:
 			conf = self.load_config()
 		except Exception as e:
-			print(f"Unable to load config file! Re-initializing...")
+			print(f"Unable to load config file! Re-initializing...({e})")
 			conf = self._init_config()
 		if apply_changes:
 			self.apply_config(config=conf)
@@ -1065,19 +1151,36 @@ class Player():
 		return conf
 	def _init_config(self):
 		d = {}
-		d['ALL_PLAYBACK_TYPES'] = ['Movies', 'Series', 'Music']
-		d['ACTIVE_PLAYBACK_TYPES'] = ['Series']
-		d['SHUFFLE_TYPES'] = ['Random', 'Series', None]
-		d['DATA_DIR'] = self.DATA_DIR
-		d['CONF_PATH'] = self.CONF_PATH
-		d['PLAY_NEXT'] = None
-		d['NOW_PLAYING'] = None
-		d['MUTE'] = False
-		d['ACTIVE_SERIES'] = self.ACTIVE_SERIES
-		d['VLC_VERBOSITY'] = 0
-		d['CACHE_SIZE'] = 6000
-		d['FULLSCREEN'] = False
-		return d
+		try:
+			d['ALL_PLAYBACK_TYPES'] = self.ALL_PLAYBACK_TYPES
+			d['ACTIVE_PLAYBACK_TYPES'] = self.ACTIVE_PLAYBACK_TYPES
+			d['SHUFFLE_TYPES'] = self.SHUFFLE_TYPES
+			d['DATA_DIR'] = self.DATA_DIR
+			d['CONF_PATH'] = self.CONF_PATH
+			d['PLAY_NEXT'] = self.PLAY_NEXT
+			d['NOW_PLAYING'] = self.NOW_PLAYING
+			d['MUTE'] = self.MUTE
+			d['ACTIVE_SERIES'] = self.ACTIVE_SERIES
+			d['VLC_VERBOSITY'] = self.VLC_VERBOSITY
+			d['CACHE_SIZE'] = self.CACHE_SIZE
+			d['FULLSCREEN'] = self.FULLSCREEN
+			d['SEEK'] = self.SEEK
+		except Exception as e:
+			print(f"One or more class attributes (globals) failed to export! Loading defaults..", e)
+			d['ALL_PLAYBACK_TYPES'] = ['Movies', 'Series', 'Music']
+			d['ACTIVE_PLAYBACK_TYPES'] = ['Series']
+			d['SHUFFLE_TYPES'] = ['Random', 'Series', None]
+			d['DATA_DIR'] = os.path.join(os.path.expanduser("~"), '.nplayerv2')
+			d['CONF_PATH'] = os.path.join(self.DATA_DIR, 'settings.conf')
+			d['PLAY_NEXT'] = None
+			d['NOW_PLAYING'] = None
+			d['MUTE'] = False
+			d['ACTIVE_SERIES'] = list(Playlist()._list_series().keys())#in case of new init (first run), use a new playlist to generate this.
+			d['VLC_VERBOSITY'] = 0
+			d['CACHE_SIZE'] = 6000
+			d['FULLSCREEN'] = False
+			d['SEEK'] = 0.1
+			return d
 	def save_current_config(self, config=None):
 		if config is None:
 			types = [None, bool, str, int, list, dict]
@@ -1181,9 +1284,9 @@ class Player():
 			f.write(data)
 			f.close()
 			print("Playlist file written!")
-			self.PLAYLISTFILE = playlistfile
+			self.PLAYLISTFILE = self.aylistfile
 			if return_playlist_object:
-				self.PLAYLIST = Playlist(playlist_file=playlistfile)
+				self.PLAYLIST = self.aylist(playlist_file=playlistfile)
 				return self.PLAYLIST
 			else:
 				return True
@@ -1223,7 +1326,13 @@ class Player():
 				print("Skip next received!")
 				self.playnext()
 			elif self.EVENT == 'SkipPrevious':
-				print("Unhandled event!", self.EVENT)
+				print("Skipping previous...")
+			elif self.EVENT == 'SeekFwd':
+				print("Fast forwarding...")
+				self.seek_fwd()
+			elif self.EVENT == 'SeekRev':
+				print("Rewinding...")
+				self.seek_rev()
 			elif self.EVENT == 'Exit':
 				print("loop exiting...")
 				self.save_current_config()
@@ -1250,12 +1359,15 @@ class Player():
 				self.open_files()
 			elif self.EVENT == 'OPEN_DIRECTORY':
 				self.open_directory()
+			else:
+				if self.EVENT is not None:
+					print("unhandled event:", self.EVENT)
 	def load_playlist(self, playlistfile=None, play_on_load=True):
 		if playlistfile is not None:
-			self.PLAYLISTFILE = playlistfile
+			self.PLAYLISTFILE = self.aylistfile
 		else:
 			self.PLAYLISTFILE = filedialog.askopenfilename()
-		self.PLAYLIST = Playlist(playlist_file=self.PLAYLISTFILE)
+		self.PLAYLIST = self.aylist(playlist_file=self.PLAYLISTFILE)
 		if play_on_load:
 			self.playnext()
 		print("Playlist loaded!")
@@ -1286,7 +1398,94 @@ class Player():
 		self.THREAD.start()
 		print("Thread started!")
 		#self.VIEWER.mainloop()
-
+	def set_position(self, pos=None, direction='fwd', position_incremental=0.1):
+		if pos is None:
+			pos = self.Poller.get('get_position')
+			if direction == 'fwd':
+				pos += position_incremental
+			elif direction == 'rev':
+				pos -= position_incremental
+			else:
+				print(f"Unknown seek diretion: {direction}!")
+		else:
+			print(f"Skipping to position: {pos}...")
+		if pos <= 0:
+			print("Reached start! Set to 0...")
+			pos = 0
+		elif pos >= 99:
+			print("Reached end! Aborting seek...")
+			return False
+		self.PLAYER.set_position(pos)
+		print("Playback position set:", pos)
+	def seek_fwd(self):
+		return self.set_position(direction='fwd')
+	def seek_rev(self):
+		return self.set_position(direction='rev')
+	def edit_active_series(self):
+		def add_item():
+			active = self.ACTIVE_SERIES
+			if type(active) == tuple:
+				active = list(active)
+			indexes = listbox_all_series.curselection()
+			for idx in indexes:
+				item = listbox_all_series.get(idx)
+				if item not in active:
+					listbox_active_series.insert(tk.END, item)
+					active.append(item)
+				else:
+					print("Item already in active:", item)
+			update_list(listbox_active_series, active)
+			self.PLAYER.set_active_series(active)
+			return active
+		def del_item():
+			indexes = listbox_active_series.curselection()
+			print("indexes:", indexes)
+			for idx in indexes:
+				item = listbox_active_series.get(idx)
+				if item in active:
+					idx = active.index(item)
+					_ = active.pop(idx)
+				else:
+					print("Item not in active???", item)
+			update_list(listbox_active_series, active)
+			self.PLAYER.set_active_series(active)
+			return active
+		def update_active(active_items=None):
+			if active_items is None:
+				active_items = listbox_active_series.get(0, tk.END)
+				if len(active_items) != len(self.PLAYER.ACTIVE_SERIES):
+					print("Length is different! Updating player option ('ACTIVE_SERIES')...")
+					self.PLAYER.set_active_series(series_names=active_items)
+			root.destroy()
+			return active_items
+		def update_list(lb, items):
+			lb.delete(0, tk.END)
+			for item in items:
+				lb.insert(tk.END, item)
+		active = self.ACTIVE_SERIES
+		root = tk.Tk()
+		active_frame = tk.Frame(root)
+		all_frame = tk.Frame(root)
+		txt_active = tk.Label(active_frame, text='Active Series Names')
+		txt_active.pack(side='top')
+		txt_all = tk.Label(all_frame, text='All Series')
+		txt_all.pack(side='top')
+		listbox_active_series = tk.Listbox(active_frame)
+		listbox_all_series = tk.Listbox(all_frame)
+		listbox_active_series.pack(side='top')
+		listbox_all_series.pack(side='top')
+		btn_add = tk.Button(all_frame, text='Add!', command=add_item)
+		btn_add.pack(side='top')
+		btn_del = tk.Button(active_frame, text='Del!', command=del_item)
+		btn_del.pack(side='top')
+		btn_ok = tk.Button(root, text='Ok!', command=update_active)
+		active_frame.pack(side='left')
+		all_frame.pack(side='right')
+		btn_ok.pack(side='right')
+		active = self.ACTIVE_SERIES
+		update_list(listbox_active_series, active)
+		all_series = list(self.PLAYER.PLAYLIST._list_series().keys())
+		update_list(listbox_all_series, all_series)
 
 if __name__ == "__main__":
 	import sys

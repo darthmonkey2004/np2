@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+from pbdl.menu import PBDL_UI
 import threading
 import pickle
 import random
@@ -11,6 +12,7 @@ import subprocess
 #P.set_xwindow(UI.WINDOW2['-VID_OUT-'].Widget.winfo_id())
 import tkinter as tk
 from tkinter import ttk, filedialog
+
 p = None
 
 """
@@ -28,6 +30,138 @@ Destop launcher data: ("$USER/.local/share/applications/np.desktop")
 		Categories=Utility;Development;
 
 """
+
+
+
+class Scanner():
+	def __init__(self, path=None, guesser=None, playlist_object=None, run=False):
+		if guesser is None:
+			guesser = MediaGuesser()
+		if playlist_object is None:
+			playlist_object = Playlist()
+		self.playlist = playlist_object
+		self.guesser = guesser
+		self.path = path
+		if run:
+			self.RESULTS = self.scan(path=self.path)
+		else:
+			self.RESULTS = 'Scan Not Started!'
+	def sh(self, com):
+		return subprocess.check_output(com, shell=True).decode().strip()
+	def find(self, ext, path=None):
+		if path is None:
+			path = os.getcwd()
+		com = f"find \"{path}\" -name \"*.{ext}\"".splitlines()
+		return self.sh(com)
+	def scan(self, path=None):
+		if path is None:
+			if self.path is None:
+				self.path = filedialog.askdirectory()
+			path = self.path
+		out = {}
+		out['Series'] = {}
+		out['Movies'] = {}
+		out['Music'] = {}
+		exts = ['mp4', 'avi', 'mkv', 'mov', 'mpg', 'flv', 'swf']
+		for ext in exts:
+			files = self.find(ext=ext, path=path).splitlines()
+			for filepath in [os.path.join(path, f) for f in files]:
+				print("filepath:", filepath)
+				media_type = self.guesser.guess_media_type(filepath)
+				out[media_type][filepath] = {}
+				out[media_type][filepath]['media_type'] = media_type
+				data = self.guesser.guess_media_type(filepath, True)
+				if media_type == 'Movies':
+					title, year = data
+					out[media_type][filepath]['title'] = title
+					out[media_type][filepath]['year'] = year
+				elif media_type == 'Series':
+					fname = os.path.splitext(os.path.basename(filepath))[0]
+					if f".{data}" in fname:
+						s = f".{data}"
+					elif f" {data}" in fname:
+						s = f" {data}"
+					else:
+						s = f".S"
+					series_name = fname.split(s)[0]
+					season = int(data.split('S')[1].split('E')[0])
+					en = int(data.split('E')[1])
+					out[media_type][filepath]['series_name'] = series_name
+					out[media_type][filepath]['season'] = season
+					out[media_type][filepath]['episode_number'] = en
+					out[media_type][filepath]['filepath'] = filepath
+				elif media_type == 'Music':
+					print(data)
+		return out
+
+	def _add_series_to_library(self, data):
+		d = self.playlist.SERIES
+		names = list(d.keys())
+		for filepath in data:
+			season = data[filepath]['season']
+			series_name = data[filepath]['series_name']
+			en = data[filepath]['episode_number']
+			print("season:", season)
+			print("series_name:", series_name)
+			print("en:", en)
+			if series_name in names:
+				print("Series found in database!")
+				seasons = self.playlist.sort_seasons(series_name=series_name)
+				if season in seasons:
+					print("Season found in database: ", season)
+					episodes  = sorted(self.playlist.sort_episode_numbers(series_name=series_name, season=season))
+					if en in episodes:
+						print(f"Ooops! Episode already exists:", filepath, series_name, data)
+					else:	
+						self.playlist.SERIES[series_name][season][en] = data[filepath]
+						print(f"Series added! Series: {series_name}, Season: {season}, Episode: {en}, Filepath: {filepath}")
+				else:
+					self.playlist.SERIES[series_name][season] = {}
+					self.playlist.SERIES[series_name][season][en] = data[filepath]
+					print(f"Added new season ({season}) to series ({series_name})!")
+			else:
+				self.playlist.SERIES[series_name] = {}
+				self.playlist.SERIES[series_name][season] = {}
+				self.playlist.SERIES[series_name][season][en] = data[filepath]
+				print("Added new series: {series_name}, season:{season}, episode: {en}!")
+	def _add_movies_to_library(self, data):
+		"""
+		print("Adds movies found to library")
+		"""
+		d = self.playlist.MOVIES
+		titles = list(d.keys())
+		for filepath in data:
+			title, year = data[filepath]['title'], data[filepath]['year']
+			if title not in titles:
+				self.MOVIES[title] = data[filepath]
+				print(f"Movie added: {title}!")
+			elif title in titles:
+				print(f"Title already in database! Skipping...", title, year, filepath, data)
+	def _add_music_to_library(self, data):
+		"""
+		adds a music directory to database
+		"""
+		print("Sorry, not yet implemented!")
+	def scan_to_library(self, path=None, data=None, migrate=False):
+		"""
+		Scans a directory and finds Movies, Series, and Music items.
+		Adds to database by media type
+		returns: updated Playlist object.
+		"""
+		if data is None:
+			print("Data not provided! Scanning path:", path)
+			data = self.scan(path=path)
+		for media_type in data:
+			print("Processing media type:", media_type)
+			if media_type == 'Series':
+				self._add_series_to_library(data=data[media_type])
+			elif media_type == 'Movies':
+				self._add_movies_to_library(data=data[media_type])
+			elif media_type == 'Music':
+				self._add_series_to_library(data=data[media_type])
+		if migrate:
+			print("TODO - add migrate option in Playlist object to import from a download location.")
+		return self.playlist
 
 
 class DataPoller():
@@ -224,9 +358,10 @@ class MediaEditor():
 class MediaManager():
 	def __init__(self, playlist=None):
 		if playlist is None:
-			playlist = self.ayer(new_player_window=False).PLAYLIST
-		self.PLAYLIST = self.aylist
+			playlist = self.new_playlist()
+		self.PLAYLIST = playlist
 		self.MEDIA_MANAGER = tk.Tk()
+		self.MEDIA_MANAGER.config(menu=self.get_menu())
 		self.TREE = {}
 		self.TREE['Series'] = self.get_tree(media_type='Series')
 		self.TREE['Movies'] = self.get_tree(media_type='Movies')
@@ -237,6 +372,22 @@ class MediaManager():
 			self.TREE['Music'] = None
 		self.build()
 		self.obj = None
+	def scan(self):
+		return Scanner(path=self.PLAYLIST.MEDIA_DIR).scan()
+	def get_menu(self):
+		menubar = tk.Menu(self.MEDIA_MANAGER)
+		scan_menu = tk.Menu(menubar, tearoff=0) # tearoff=1 means menu can be dragged to a floating object.
+		playlist_menu = tk.Menu(menubar, tearoff=0)
+		menubar.add_cascade(label="Scan", menu=scan_menu)
+		menubar.add_cascade(label="Playlist", menu=playlist_menu)
+		scan_menu.add_command(label="Scan for media:", command=self.scan)
+		scan_menu.add_separator() # Add a separator line
+		playlist_menu.add_command(label="Clear Playlist!", command=self.new_playlist)
+		playlist_menu.add_separator() # Add a separator line
+		return menubar
+	def new_playlist(self):
+		self.PLAYLIST = Player(new_player_window=False).PLAYLIST
+		print("TODO - alter playlist obect to be able to return an emtpy (uninitialized) playlist object...")
 	def _get_columns(self, media_type='Series'):
 		if media_type == 'Series':
 			names = list(self.PLAYLIST.SERIES.keys())
@@ -367,7 +518,9 @@ class MediaGuesser():
 			if  not return_data:
 				return 'Movies'
 			else:
-				return self.year_in(filepath, return_data=True)
+				year = self.year_in(filepath, return_data=True)
+				title = os.path.splitext(os.path.basename(filepath))[0].split(f"({year})")[0].strip()
+				return title, year
 
 	def get_info_from_filepath(self, filepath=None, media_type=None):
 		if filepath is None:
@@ -778,7 +931,17 @@ class Playlist():
 	def sort_seasons(self, series_name):
 		return sorted([s for s in list(self.SERIES[series_name].keys())])
 	def sort_episode_numbers(self, series_name, season):
-		return sorted([en for en in list(self.SERIES[series_name][season].keys())])
+		l = list(self.SERIES[series_name][season].keys())
+		out = []
+		for en in l:
+			if "," in str(en):
+				for sen in en.split(','):
+					out.append(int(sen))
+			else:
+				if type(en) != int:
+					en = int(en)
+				out.append(en)
+		return out
 	def get_first_s_en_series(self, series_name=None):
 		if series_name is None:
 			print(f"No series name provided! Randomizing...")
@@ -945,6 +1108,37 @@ class Playlist():
 			return self.get_next_music()
 
 
+class SetScale():
+	def __init__(self, scale=None, player=None, run=False):
+		if player is None:
+			player = Player(new_player_window=False)
+		self.player = player
+		if scale is None:
+			scale = self.player.SCALE*100
+		self.scale = scale
+		if run:
+			self.show()
+		else:
+			self.slider_win = None
+	def show(self):
+		self.slider_win = self.scale_slider()
+		self.slider.set(self.scale)
+	def scale_slider(self):
+		root = tk.Tk()
+		root.geometry("400x100")
+		self.slider = tk.Scale(root, label="Set Scale:", variable=self.scale, from_=-200, to=200, orient=tk.HORIZONTAL, command=self.get_scale)
+		self.set_btn = tk.Button(root, text="Set!", command=self.submit)
+		self.slider.pack(expand=True, fill=tk.BOTH)
+		self.set_btn.pack()
+		return root
+	def submit(self):
+		self.scale = self.get_scale()
+		self.slider_win.destroy()
+		return self.scale
+	def get_scale(self, event=None):
+		self.scale = self.slider.get()/100
+		self.player.set_scale(self.scale)
+		return self.scale
 
 
 class Player():
@@ -1010,6 +1204,7 @@ class Player():
 			print("ACTIVE_SERIES key not in settings file! Defaulting to 'all'...")
 			config['ACTIVE_SERIES'] = Playlist()._list_series().keys()
 			self.save_current_config(config)
+		self.Scaler = self.get_scaler()
 		self.PLAYLISTFILE = playlistfile
 		if playlistfile is not None:
 			self.PLAYLIST = self.load_playlist(playlistfile)
@@ -1027,6 +1222,8 @@ class Player():
 		if run_mainloop:
 			self.start_loop()
 			self.VIEWER.mainloop()
+	def get_scaler(self):
+		return SetScale(player=self)
 	def get_player_data(self):
 		return self.Poller.poll()
 	def get_player_attr(self, key):
@@ -1049,10 +1246,14 @@ class Player():
 		controlls_menu.add_separator() # Add a separator line
 		controlls_menu.add_command(label="Volume Up", command=lambda: self.PLAYER.audio_set_volume(self.PLAYER.audio_get_volume()+10))
 		controlls_menu.add_command(label="Volume Down", command=lambda: self.PLAYER.audio_set_volume(self.PLAYER.audio_get_volume()-10))
+		controlls_menu.add_command(label="Scale Up", command=self.scale_up)
+		controlls_menu.add_command(label="Scale Down", command=self.scale_down)
+		controlls_menu.add_command(label="Set Sccale:", command=self.get_scaler().show)
+		controlls_menu.add_separator() # Add a separator line
 		controlls_menu.add_command(label="Exit", command=exit)
 		edit_menu.add_command(label="Set Active Series", command=self.edit_active_series)
 		edit_menu.add_command(label="Media Manager", command=self.run_media_manager)
-		edit_menu.add_command(label="Pirate Bay Downloader", command=lambda: print("NOT IMPLEMENTED"))
+		edit_menu.add_command(label="Pirate Bay Downloader", command=self.launch_pbdl)
 		edit_menu.add_command(label="Metadata Tag Editor", command=lambda: print("NOT IMPLEMENTED"))
 		playlist_menu.add_command(label="Load Playlist File...", command=self.load_playlist)
 		playlist_menu.add_command(label="Export Current Playlist...", command=self.export_current_playlist)
@@ -1119,6 +1320,16 @@ class Player():
 		else:
 			print(w, h, w2, h2)
 		return pcnt
+	def scale_up(self, val=0.1):
+		old = self.SCALE
+		self.SCALE = self.SCALE + val
+		self.set_scale(scale=self.SCALE)
+		print(f"Scaled video up: {old} >> {self.SCALE}...")
+	def scale_down(self, val=0.1):
+		old = self.SCALE
+		self.SCALE = self.SCALE - val
+		self.set_scale(scale=self.SCALE)
+		print(f"Scaled video down: {old} >> {self.SCALE}...")
 	def set_scale(self, scale=None):
 		if scale is None:
 			scale = self.get_scale()
@@ -1333,6 +1544,8 @@ class Player():
 			elif self.EVENT == 'SeekRev':
 				print("Rewinding...")
 				self.seek_rev()
+			elif self.EVENT == 'PBDL':
+				self.launch_pbdl()
 			elif self.EVENT == 'Exit':
 				print("loop exiting...")
 				self.save_current_config()
@@ -1486,6 +1699,10 @@ class Player():
 		update_list(listbox_active_series, active)
 		all_series = list(self.PLAYER.PLAYLIST._list_series().keys())
 		update_list(listbox_all_series, all_series)
+	def launch_pbdl(self):
+		print("Launching Pirate Bay downloader...")
+		self.PBDL_UI = PBDL_UI()
+		self.PBDL_UI.main()
 
 if __name__ == "__main__":
 	import sys

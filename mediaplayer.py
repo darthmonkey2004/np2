@@ -29,6 +29,66 @@ Destop launcher data: ("$USER/.local/share/applications/np.desktop")
 
 """
 
+class Searcher():
+	def __init__(self, filepath=None):
+		self.filepath = filepath
+	def search_series(self, series_name, season=None, episode_number=None):
+		url = f"http://www.omdbapi.com/?apikey=8aa45e85"
+		out = {}
+		media_type = 'Series'
+		r = requests.get(f"{url}&t={series_name.replace(' ', '+')}&type=series")
+		data = r.json()
+		imdbid = data['imdbID']
+		series_name = data['Title']
+		year = data['Year']
+		plot = data['Plot']
+		poster = data['Poster']
+		out[series_name] = {}
+		if season is not None:
+			seasons = [season]
+		else:
+			seasons = data['totalSeasons']
+		for season in seasons:
+			out[series_name][season] = {}
+			r = requests.get(f"{url}&i={imdbid}&season={season}&type=episode")
+			ret = r.json()
+			for line in ret['Episodes']:
+				episode_name, episode_number, release_date = line['Title'], line['Episode'], line['imdbID'], line['Released']
+				out['media_type'] = media_type
+				out['imdbid'] = imdbid
+				out['series_name'] = series_name
+				out['season'] = season
+				out['episode_number'] = episode_number
+				out['episode_name'] = episode_name
+				out['release_date'] = release_date
+				out['year'] = year
+				out['plot'] = plot
+				out['poster'] = poster
+				out[series_name][season][episode_number] = out
+		return out
+	def search_movies(self, title, year=None):
+		url = f"http://www.omdbapi.com/?apikey=8aa45e85"
+		title = title.replace(' ', '+')
+		if year is None:
+			r = requests.get(f"{url}&t={title}&type=movie")
+		else:
+			r = requests.get(f"{url}&t={title}&type=movie&year={year}")
+		out = {}
+		data = r.json()
+		return {'title': data['Title'], 'year': data['Year'], 'release_date': data['Released'], 'plot': data['Plot'], 'poster': data['Poster'], 'imdbid': data['imdbID']}
+	def search_by_filepath(self, filepath=None):
+		info = MediaGuesser(filepath=filepath).get_info_from_filepath(filepath)
+		if filepath is None:
+			filepath = self.filepath
+		media_type = MediaGuesser(filepath=filepath).guess_media_type(os.path.basename(filepath))
+		if media_type == 'Series':	
+			return self.search_series(info['series_name'], season=info['season'], episode_number=info['episode_number'])
+		elif media_type == 'Movies':
+			return self.search_movies(info['title'], year=info['year'])
+		else:
+			print("Not movie or series! Search will fail, skipping...")
+			return {'filepath': filepath, 'media_type': media_type}
+		
 
 class DataPoller():
 	"""
@@ -223,9 +283,10 @@ class MediaEditor():
 
 class MediaManager():
 	def __init__(self, playlist=None):
+		self.Guesser = MediaGuesser()
 		if playlist is None:
-			playlist = self.ayer(new_player_window=False).PLAYLIST
-		self.PLAYLIST = self.aylist
+			playlist = Playlist(init_empty=True)
+		self.PLAYLIST = playlist
 		self.MEDIA_MANAGER = tk.Tk()
 		self.TREE = {}
 		self.TREE['Series'] = self.get_tree(media_type='Series')
@@ -237,20 +298,69 @@ class MediaManager():
 			self.TREE['Music'] = None
 		self.build()
 		self.obj = None
-	def _get_columns(self, media_type='Series'):
+
+	def _get_column_series(self, sn='Solar Opposites', season=4, en=1):
+		data = self.PLAYLIST.SERIES[sn][season][en]
+		if isinstance(data, Media):
+			data = dict(data.__dict__)
+		return data
+
+	def _get_column_movie(self, title):
+		data = self.PLAYLIST.MOVIES[title]
+		if isinstance(data, Media):
+			data = dict(data.__dict__)
+		return data
+
+	def _get_column_music(self, filepath):
+		data = self.PLAYLIST.MUSIC[filepath]
+		if isinstance(data, Media):
+			data = dict(data.__dict__)
+		return data
+
+	def _get_column_other(self, filepath):
+		data = self.PLAYLIST.MOVIES[filepath]
+		if isinstance(data, Media):
+			data = dict(data.__dict__)
+		return data
+
+	def _get_columns(self, filepath=None, media_type=None):
+		self.PLAYLIST.update()
+		if media_type is None:
+			media_type = self.Guesser.guess_media_type(filepath)
+		if filepath is None:
+			if media_type == 'Series':
+				d = self.PLAYLIST.SERIES[list(self.PLAYLIST.SERIES.keys())[0]]
+				season = list(d.keys())[0]
+				en = list(d[season].keys())[0]
+				if type(d[season][en]) == dict:
+					return [k for k in list(d[season][en].keys()) if k != 'data']
+				else:
+					return [k for k in list(d[season][en].__dict__.keys()) if k != 'data']
+			else:
+				d = self.__dict__[media_type.upper()]
+				return [k for k in list(list(d.values())[0].__dict__.keys()) if k != 'data']
+
+
+
+
+		info = self.Guesser.get_info_from_filepath(filepath)
 		if media_type == 'Series':
-			names = list(self.PLAYLIST.SERIES.keys())
-			sn = names[0]
-			season = self.PLAYLIST.sort_seasons(sn)[0]
-			en = self.PLAYLIST.sort_episode_numbers(series_name=sn, season=season)[0]
-			return [k for k in list(self.PLAYLIST.SERIES[sn][season][en].__dict__.keys()) if k != 'data']
+			return self._get_column_series(sn=info['series_name'], season=info['season'], en=info['episode_number'])
 		elif media_type == 'Movies':
-			return [k for k in list(list(self.PLAYLIST.MOVIES.values())[0].__dict__.keys()) if k != 'data']
+			return self._get_column_movie(title=info['title'])
 		elif media_type == 'Music':
+			#return self._get_column_music(filepath=filepath)
 			return ['title', 'youtube_id', 'artist', 'album', 'filepath']
+		elif media_type == 'Other':
+			return self._get_column_other(filepath=filepath)
+		else:
+			print("Unhandled media type:", media_type, filepath, info)
+	
+			
 	def get_tree(self, media_type='Series', columns=None):
 		if columns is None:
 			columns = self._get_columns(media_type=media_type)
+		print("columns:", columns)
 		t = ttk.Treeview(self.MEDIA_MANAGER, show='headings', columns=columns)
 		if media_type == 'Series':
 			t.bind("<<TreeviewSelect>>", self.series_tree_selected)
@@ -259,6 +369,7 @@ class MediaManager():
 		elif media_type == 'Music':
 			t.bind("<<TreeviewSelect>>", self.music_tree_selected)
 		for c in columns:
+			print("c, text:", c)
 			t.heading(c, text=c)
 		t.pack(fill="both", expand=True)
 		return t
@@ -348,7 +459,10 @@ class MediaGuesser():
 				else:
 					out.append(s)
 		out.sort(key=len, reverse=True)
-		return out[0]
+		try:
+			return out[0]
+		except:
+			return None
 	def year_in(self, filepath, return_data=False):
 		for y in self._get_years():
 			if f"({y})" in filepath:
@@ -560,6 +674,79 @@ class Playlist():
 				self.NEXT = self.get_next()
 			except Exception as e:
 				self.NEXT = None
+	def object_to_dict(self, obj):
+		return obj.__dict__
+	def dict_to_object(self, d):
+		return Media(**d)
+	def dict_to_objects(self, d):
+		objects = {}
+		objects['Series'] = {}
+		objects['Movies'] = {}
+		objects['Music'] = {}
+		objects['Other'] = {}
+		for sn in d['Series']:
+			if sn not in list(objects['Series'].keys()):
+				objects['Series'][sn] = {}
+			for season in list(d['Series'][sn].keys()):
+				if season not in list(objects['Series'][sn].keys()):
+					objects['Series'][sn][season] = {}
+				for en in list(d['Series'][sn][season].keys()):
+					objects['Series'][sn][season][en] = Media(**d['Series'][sn][season][en])
+		for title in d['Movies']:
+			objects['Movies'][title] = Media(**d['Movies'][title])
+		for filepath in d['Music']:
+			objects['Music'][filepath] = Media(**d['Music'][filepath])
+		for filepath in d['Other']:
+			objects['Other'][filepath] = Media(**d['Other'][filepath])
+		return objects
+	def objects_to_dict(self, data=None):
+		out = {}
+		out['Series'] = {}
+		out['Movies'] = {}
+		out['Music'] = {}
+		out['Other'] = {}
+		if data is None:
+			movies = self.MOVIES
+			series = self.SERIES
+			other = self.OTHER
+			music = self.MUSIC
+		else:
+			movies = data['Movies']
+			series = data['Series']
+			music = data['Music']
+			other = data['Other']
+		for sn in series:
+			out['Series'][sn] = {}
+			for season in series[sn]:
+				if season not in list(out['Series'][sn].keys()):
+					out['Series'][sn][season] = {}
+				for en in series[sn][season]:
+					obj = series[sn][season][en]
+					out['Series'][sn][season][en] = obj.__dict__
+			for title in movies:
+				obj = movies[title]
+				out['Movies'][obj.title] = obj.__dict__
+			for filepath in music:
+				obj = music[filepath]
+				out['Music'][obj.filepath] = obj.__dict__
+			for filepath in other:
+				obj = other[filepath]
+				out['Other'][obj.filepath] = obj.__dict__
+		return out
+	def update(self, series=None, movies=None, music=None):
+		if series is None:
+			self.SERIES = self.get_series()
+		else:
+			self.SERIES = series
+		if movies is None:
+			self.MOVIES = self.get_movies()
+		else:
+			self.MOVIES = movies
+		if music is None:
+			self.MUSIC = self.get_music()
+		else:
+			self.MUSIC = music
+		print("Playlist reloaded!")
 	def apply_playlist(self, playlistfile='testplaylist.txt'):
 		self.SERIES = {}
 		self.MOVIES = {}
@@ -728,43 +915,14 @@ class Playlist():
 		objects = {}
 		self.MUSIC = self._list_music()
 		return self.MUSIC
-	def get_series(self, filter_by_name=None, active_series=None):
+	def get_series(self, **args):
 		"""
 		main getter function for populating playlist object with series.
 		Uses self.ACTIVE_SERIES (defaults as all in media list) to filter active/inactive
 		playlist items and only returns those in the ACTIVE_SERIES list.
 		TODO - Add this to movie series/sagas/trilogies/etc.
 		"""
-		series = self._list_series()
-		if active_series is None:
-			try:
-				if self.ACTIVE_SERIES is None:
-					self.ACTIVE_SERIES = list(series.keys())
-				active_series = self.ACTIVE_SERIES
-			except:
-				print("Series names list not provided to playlist object. Initializing as *...")
-				self.ACTIVE_SERIES = list(series.keys())
-				active_series = self.ACTIVE_SERIES
-		else:
-			self.ACTIVE_SERIES = active_series
-		objects = {}
-		for series_name in active_series:
-			objects[series_name] = {}
-			for season in series[series_name]:
-				objects[series_name][season] = {}
-				for episode_number in series[series_name][season]:
-					d = series[series_name][season][episode_number]
-					#d['media_type'] = 'Series'
-					print("d:", d)
-					objects[series_name][season][episode_number] = Media(data=d)
-		if filter_by_name is not None:
-			out = {}
-			out[filter_by_name] = objects[filter_by_name]
-			ret = out
-		else:
-			ret = objects
-		self.SERIES = ret
-		return ret
+		return self._list_series()
 	def _get_random_series(self):
 		names = self._list_series()
 		ct = len(names)
@@ -1326,6 +1484,7 @@ class Player():
 		playlist_menu.add_command(label="Open Directory...", command=self.open_directory)
 		return menubar
 	def run_media_manager(self):
+		self.PLAYLIST.update()
 		self.MEDIA_MANAGER = MediaManager(playlist=self.PLAYLIST)
 		print("Media manager loaded!")
 	def _set_attr(self, key, value, write_config_file=False):

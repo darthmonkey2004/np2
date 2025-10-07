@@ -1,6 +1,5 @@
 #!/usr/bin/python3
 
-from pbdl.menu import PBDL_UI
 import threading
 import pickle
 import random
@@ -12,7 +11,6 @@ import subprocess
 #P.set_xwindow(UI.WINDOW2['-VID_OUT-'].Widget.winfo_id())
 import tkinter as tk
 from tkinter import ttk, filedialog
-
 p = None
 
 """
@@ -30,138 +28,6 @@ Destop launcher data: ("$USER/.local/share/applications/np.desktop")
 		Categories=Utility;Development;
 
 """
-
-
-
-class Scanner():
-	def __init__(self, path=None, guesser=None, playlist_object=None, run=False):
-		if guesser is None:
-			guesser = MediaGuesser()
-		if playlist_object is None:
-			playlist_object = Playlist()
-		self.playlist = playlist_object
-		self.guesser = guesser
-		self.path = path
-		if run:
-			self.RESULTS = self.scan(path=self.path)
-		else:
-			self.RESULTS = 'Scan Not Started!'
-	def sh(self, com):
-		return subprocess.check_output(com, shell=True).decode().strip()
-	def find(self, ext, path=None):
-		if path is None:
-			path = os.getcwd()
-		com = f"find \"{path}\" -name \"*.{ext}\"".splitlines()
-		return self.sh(com)
-	def scan(self, path=None):
-		if path is None:
-			if self.path is None:
-				self.path = filedialog.askdirectory()
-			path = self.path
-		out = {}
-		out['Series'] = {}
-		out['Movies'] = {}
-		out['Music'] = {}
-		exts = ['mp4', 'avi', 'mkv', 'mov', 'mpg', 'flv', 'swf']
-		for ext in exts:
-			files = self.find(ext=ext, path=path).splitlines()
-			for filepath in [os.path.join(path, f) for f in files]:
-				print("filepath:", filepath)
-				media_type = self.guesser.guess_media_type(filepath)
-				out[media_type][filepath] = {}
-				out[media_type][filepath]['media_type'] = media_type
-				data = self.guesser.guess_media_type(filepath, True)
-				if media_type == 'Movies':
-					title, year = data
-					out[media_type][filepath]['title'] = title
-					out[media_type][filepath]['year'] = year
-				elif media_type == 'Series':
-					fname = os.path.splitext(os.path.basename(filepath))[0]
-					if f".{data}" in fname:
-						s = f".{data}"
-					elif f" {data}" in fname:
-						s = f" {data}"
-					else:
-						s = f".S"
-					series_name = fname.split(s)[0]
-					season = int(data.split('S')[1].split('E')[0])
-					en = int(data.split('E')[1])
-					out[media_type][filepath]['series_name'] = series_name
-					out[media_type][filepath]['season'] = season
-					out[media_type][filepath]['episode_number'] = en
-					out[media_type][filepath]['filepath'] = filepath
-				elif media_type == 'Music':
-					print(data)
-		return out
-
-	def _add_series_to_library(self, data):
-		d = self.playlist.SERIES
-		names = list(d.keys())
-		for filepath in data:
-			season = data[filepath]['season']
-			series_name = data[filepath]['series_name']
-			en = data[filepath]['episode_number']
-			print("season:", season)
-			print("series_name:", series_name)
-			print("en:", en)
-			if series_name in names:
-				print("Series found in database!")
-				seasons = self.playlist.sort_seasons(series_name=series_name)
-				if season in seasons:
-					print("Season found in database: ", season)
-					episodes  = sorted(self.playlist.sort_episode_numbers(series_name=series_name, season=season))
-					if en in episodes:
-						print(f"Ooops! Episode already exists:", filepath, series_name, data)
-					else:	
-						self.playlist.SERIES[series_name][season][en] = data[filepath]
-						print(f"Series added! Series: {series_name}, Season: {season}, Episode: {en}, Filepath: {filepath}")
-				else:
-					self.playlist.SERIES[series_name][season] = {}
-					self.playlist.SERIES[series_name][season][en] = data[filepath]
-					print(f"Added new season ({season}) to series ({series_name})!")
-			else:
-				self.playlist.SERIES[series_name] = {}
-				self.playlist.SERIES[series_name][season] = {}
-				self.playlist.SERIES[series_name][season][en] = data[filepath]
-				print("Added new series: {series_name}, season:{season}, episode: {en}!")
-	def _add_movies_to_library(self, data):
-		"""
-		print("Adds movies found to library")
-		"""
-		d = self.playlist.MOVIES
-		titles = list(d.keys())
-		for filepath in data:
-			title, year = data[filepath]['title'], data[filepath]['year']
-			if title not in titles:
-				self.MOVIES[title] = data[filepath]
-				print(f"Movie added: {title}!")
-			elif title in titles:
-				print(f"Title already in database! Skipping...", title, year, filepath, data)
-	def _add_music_to_library(self, data):
-		"""
-		adds a music directory to database
-		"""
-		print("Sorry, not yet implemented!")
-	def scan_to_library(self, path=None, data=None, migrate=False):
-		"""
-		Scans a directory and finds Movies, Series, and Music items.
-		Adds to database by media type
-		returns: updated Playlist object.
-		"""
-		if data is None:
-			print("Data not provided! Scanning path:", path)
-			data = self.scan(path=path)
-		for media_type in data:
-			print("Processing media type:", media_type)
-			if media_type == 'Series':
-				self._add_series_to_library(data=data[media_type])
-			elif media_type == 'Movies':
-				self._add_movies_to_library(data=data[media_type])
-			elif media_type == 'Music':
-				self._add_series_to_library(data=data[media_type])
-		if migrate:
-			print("TODO - add migrate option in Playlist object to import from a download location.")
-		return self.playlist
 
 
 class DataPoller():
@@ -358,10 +224,9 @@ class MediaEditor():
 class MediaManager():
 	def __init__(self, playlist=None):
 		if playlist is None:
-			playlist = self.new_playlist()
-		self.PLAYLIST = playlist
+			playlist = self.ayer(new_player_window=False).PLAYLIST
+		self.PLAYLIST = self.aylist
 		self.MEDIA_MANAGER = tk.Tk()
-		self.MEDIA_MANAGER.config(menu=self.get_menu())
 		self.TREE = {}
 		self.TREE['Series'] = self.get_tree(media_type='Series')
 		self.TREE['Movies'] = self.get_tree(media_type='Movies')
@@ -372,22 +237,6 @@ class MediaManager():
 			self.TREE['Music'] = None
 		self.build()
 		self.obj = None
-	def scan(self):
-		return Scanner(path=self.PLAYLIST.MEDIA_DIR).scan()
-	def get_menu(self):
-		menubar = tk.Menu(self.MEDIA_MANAGER)
-		scan_menu = tk.Menu(menubar, tearoff=0) # tearoff=1 means menu can be dragged to a floating object.
-		playlist_menu = tk.Menu(menubar, tearoff=0)
-		menubar.add_cascade(label="Scan", menu=scan_menu)
-		menubar.add_cascade(label="Playlist", menu=playlist_menu)
-		scan_menu.add_command(label="Scan for media:", command=self.scan)
-		scan_menu.add_separator() # Add a separator line
-		playlist_menu.add_command(label="Clear Playlist!", command=self.new_playlist)
-		playlist_menu.add_separator() # Add a separator line
-		return menubar
-	def new_playlist(self):
-		self.PLAYLIST = Player(new_player_window=False).PLAYLIST
-		print("TODO - alter playlist obect to be able to return an emtpy (uninitialized) playlist object...")
 	def _get_columns(self, media_type='Series'):
 		if media_type == 'Series':
 			names = list(self.PLAYLIST.SERIES.keys())
@@ -480,24 +329,26 @@ class MediaGuesser():
 			l.append(i)
 		return l
 	def _get_seasons(self):
-		l = sl = self._get_list(1, 100)
+		l = sl = self._get_list(0, 100)
 		eps = [f"E{i}" for i in l]
-		eps += [f"S0{i}" for i in self._get_list(1, 9)]
+		eps += [f"S0{i}" for i in self._get_list(0, 9)]
 		seasons = [f"S{i}" for i in l]
-		seasons += [f"S0{i}" for i in self._get_list(1, 9)]
+		seasons += [f"S0{i}" for i in self._get_list(0, 9)]
 		out = []
 		for s in seasons:
 			for e in eps:
 				out.append(f"{s}{e}")
 		return out
 	def se_isin(self, filepath, return_data=False):
+		out = []
 		for s in self._get_seasons():
 			if s in filepath:
 				if not return_data:
 					return True
 				else:
-					return s
-	
+					out.append(s)
+		out.sort(key=len, reverse=True)
+		return out[0]
 	def year_in(self, filepath, return_data=False):
 		for y in self._get_years():
 			if f"({y})" in filepath:
@@ -518,9 +369,17 @@ class MediaGuesser():
 			if  not return_data:
 				return 'Movies'
 			else:
-				year = self.year_in(filepath, return_data=True)
-				title = os.path.splitext(os.path.basename(filepath))[0].split(f"({year})")[0].strip()
-				return title, year
+				return self.year_in(filepath, return_data=True)
+		if '.mp3' in filepath or '.wav' in filepath:
+			if not return_data:
+				return 'Music'
+			else:
+				return os.path.splitext(os.path.basename(filepath))[0]
+		else:
+			if not return_data:
+				return 'Other'
+			else:
+				return filepath
 
 	def get_info_from_filepath(self, filepath=None, media_type=None):
 		if filepath is None:
@@ -538,22 +397,40 @@ class MediaGuesser():
 			out['title'] = fname.split(f"({out['year']})")[0].strip()
 		elif media_type == 'Series':
 			s = self.se_isin(filepath, return_data=True)
-			out['series_name'] = fname.split(s)[0]
+			if '.' in os.path.splitext(filepath)[0]:
+				splitter = f".{s}"
+			else:
+				splitter = s
+			out['series_name'] = fname.split(splitter)[0].strip()
 			out['season'] = s.split("S")[1].split("E")[0]
-			out['episode_number'] = s.split('E')[1]
+			print("out:", out)
+			if str(out['season'])[0] == '0' and int(out['season']) != 0:
+				out['season'] = int(str(out['season'])[1:])
+			else:
+				out['season'] = int(out['season'])
+			out['episode_number'] = int(s.split('E')[1])
 		return out
 
 class Media():
-	def __init__(self, data):
-		self.data = data
+	def __init__(self, **data):
+		t = list(data.values())[0]
+		if isinstance(t, Media):
+			data = t.__dict__
+			self.data = data
+		else:
+			self.data = data
 		for k in data:
 			self.__dict__[k] = data[k]
 		try:
 			#print("Media created as type:", self.media_type)
 			mt = self.media_type
 		except:
-			self.media_type = MediaGuesser().guess_media_type(filepath=self.filepath)
-			print("Media type not provided! Guessing...", self.media_type)
+			try:
+				self.media_type = MediaGuesser().guess_media_type(filepath=self.filepath)
+				print("Media type not provided! Guessing...", self.media_type)
+			except Exception as e:
+				print("Couldn't get media type! data dict might be incomplete...")
+				print("data:", data)
 	def _update_filepath_series(self):
 		ext = os.path.splitext(self.filepath)[1].split('.')[1]
 		path = os.path.dirname(self.filepath)
@@ -638,7 +515,7 @@ class Media():
 
 
 class Playlist():
-	def __init__(self, media_path='/media/monkey/usbhd/Media', playlist_file=None, playback_types=None, active_series=None):
+	def __init__(self, media_path='/media/monkey/usbhd/Media', playlist_file=None, playback_types=None, active_series=None, init_empty=False):
 		"""
 		TDDO - add episode_number to movie files for ordering list in a set/trilogy/etc.
 		TODO - function - auto determine media type
@@ -659,19 +536,30 @@ class Playlist():
 		if playlist_file is not None:
 			self.apply_playlist(playlistfile=playlist_file)
 		else:
-			if active_series is not None:#if active series list provided (i.e. loaded from Player settings)...
-				self.ACTIVE_SERIES = active_series
+			if init_empty:
+				self.ACTIVE_SERIES = []
+				self.SERIES = {}
+				self.MOVIES = {}
+				self.MUSIC = {}
+				self.OTHER = {}
+				self.LAST = None
+				self.NEXT = None
 			else:
-				self.ACTIVE_SERIES = list(self._list_series().keys())#default to all in series list, overridden by Player settings.conf
-			self.SERIES = self.get_series(active_series=self.ACTIVE_SERIES)
-			self.MOVIES = self.get_movies()
-			self.MUSIC = self.get_music()
-			self.OTHER = {}
-		self.LAST = None
-		try:
-			self.NEXT = self.get_next()
-		except Exception as e:
-			self.NEXT = None
+				if active_series is not None:#if active series list provided (i.e. loaded from Player settings)...
+					self.ACTIVE_SERIES = active_series
+					print("Active series provided to playlist!", self.ACTIVE_SERIES)
+				else:
+					print("Unable to set active series from config or arguments! Setting to None...")
+					self.ACTIVE_SERIES = None#default to all in series list, overridden by Player settings.conf
+				self.SERIES = self.get_series()
+				self.MOVIES = self.get_movies()
+				self.MUSIC = self.get_music()
+				self.OTHER = {}
+				self.LAST = None
+			try:
+				self.NEXT = self.get_next()
+			except Exception as e:
+				self.NEXT = None
 	def apply_playlist(self, playlistfile='testplaylist.txt'):
 		self.SERIES = {}
 		self.MOVIES = {}
@@ -716,51 +604,61 @@ class Playlist():
 		self.HISTORY['Series'] = {}
 		self.HISTORY['Music'] = {}
 		return self.HISTORY
-	def _list_series(self, series_name=None, season=None, return_seasons_as_int=False):
-		out = {}
+	def _list_series(self, series_name=None, season=None):
+		self.SERIES = {}
+		series = {}
 		names = os.listdir(self.SERIES_DIR)
 		if series_name is None:
 			targets = names
 		else:
 			targets = [series_name]
 		for series_name in targets:
+			season = None
+			en = None
 			if series_name in names:
-				out[series_name] = {}
+				series[series_name] = {}
 				path = os.path.join(self.SERIES_DIR, series_name)
 				if not os.path.isdir(path):
 					print(f"Not a directory: {path}")
 				else:
 					dirs = os.listdir(path)
 					if season is None:
-						if return_seasons_as_int:
-							seasons = [d.split('S')[1] for d in dirs]
-						else:
-							seasons = dirs
+						seasons = dirs
 					else:
-						seasons = [season]
-					for s in seasons:
+						seasons = [f"S{season}"]
+					for sdir in seasons:
+						s = sdir
 						if 'S' in str(s):
 							sint = int(s.split('S')[1])
-						out[series_name][sint] = {}
-						path = os.path.join(self.SERIES_DIR, series_name, s)
+							sstring = s
+						else:
+							sint = s
+							sstring = f"S{sint}"
+						series[series_name][sint] = {}
+						path = os.path.join(self.SERIES_DIR, series_name, sdir)
+						print("Scanning path:", path)
 						files = os.listdir(path)
 						for filepath in files:
-							en = filepath.split(f"{s}E")[1].split('.')[0]
-							if '-' in str(en):
-								n1 = int(en.split('-')[0])
-								n2 = int(en.split('-E')[1])
-								en = ",".join(self._get_list_range(n1, n2))
+							info = self.Guesser.get_info_from_filepath(filepath)
+							series_name, season, episode_number = info['series_name'], info['season'], info['episode_number']
+							if series_name not in list(series.keys()):
+								series[series_name] = {}
+							if season not in list(series[series_name].keys()):
+								series[series_name][season] = {}
+							if episode_number not in list(series[series_name][season].keys()):
+								out = {}
+								out['media_type'] = 'Series'
+								out['series_name'] = series_name
+								out['season'] = season
+								out['filepath'] = os.path.join(path, filepath)
+								out['episode_number'] = episode_number
+								series[series_name][season][episode_number] = Media(**out)
 							else:
-								en = int(en)
-							out[series_name][sint][en] = {}
-							out[series_name][sint][en]['series_name'] = series_name
-							out[series_name][sint][en]['season'] = sint
-							out[series_name][sint][en]['episode_number'] = en
-							out[series_name][sint][en]['filepath'] = os.path.join(path, filepath)
-							out[series_name][sint][en]['media_type'] = 'Series'
-		return out
+								print("Episode already in database!", series_name, season, episode_number, filepath)
+		self.SERIES = series
+		return series
 	def _list_movies(self, title=None, year=None):
-		out = {}
+		self.MOVIES = {}
 		exts = ['.mkv', '.mp4', '.avi', '.mpg', '.mov', '.flv', '.swf']
 		if title is not None:
 			names = [title]
@@ -778,13 +676,15 @@ class Playlist():
 					except Exception as e:
 						print(f"{e}: {filepath}")
 						year = None
-					out[title] = {}
-					out[title]['title'] = title
-					out[title]['year'] = year
-					out[title]['filepath'] = os.path.join(path, filepath)
-		return out
+					out = {}
+					out['title'] = title
+					out['year'] = year
+					out['media_type'] = 'Movies'
+					out['filepath'] = os.path.join(path, filepath)
+					self.MOVIES[title] = Media(**out)
+		return self.MOVIES
 	def _list_music(self, title=None, artist=None, album=None):
-		out = {}
+		self.MUSIC = {}
 		exts = ['.mp3', '.wav']
 		files = [os.path.join(self.MUSIC_DIR, f) for f in os.listdir(self.MUSIC_DIR)]
 		for filepath in files:
@@ -798,21 +698,23 @@ class Playlist():
 					except Exception as e:
 						print(f"{e}: {filepath}")
 						ytid = None
-					out[title] = {}
-					out[title]['title'] = title
-					out[title]['youtube_id'] = ytid
-					out[title]['filepath'] = filepath
-					out[title]['media_type'] = 'Music'
+					d = {}
+					d['title'] = title
+					d['youtube_id'] = ytid
+					d['filepath'] = filepath
+					d['media_type'] = 'Music'
+					self.MUSIC[title] = Media(**d)
 				else:
 					title, artist, album, ytid, ext = fname.split('.')
-					out[title] = {}
-					out[title]['title'] = title
-					out[title]['artist'] = artist
-					out[title]['album'] = album
-					out[title]['youtube_id'] = ytid
-					out[title]['media_type'] = 'Music'
-					out[title]['filepath'] = filepath
-		return out
+					d = {}
+					d['title'] = title
+					d['artist'] = artist
+					d['album'] = album
+					d['youtube_id'] = ytid
+					d['media_type'] = 'Music'
+					d['filepath'] = filepath
+					self.MUSIC[title] = Media(**d)
+		return self.MUSIC
 	def _get_list_range(self, start_num, end_num):
 		l = []
 		for i in range(start_num, end_num+1):
@@ -820,21 +722,12 @@ class Playlist():
 		return l
 	def get_movies(self, title=None, year=None):
 		objects = {}
-		movies = self._list_movies()
-		for title in movies:
-			data = movies[title]
-			data['media_type'] = 'Movies'
-			objects[title] = Media(data=data)
-		return objects
+		self.MOVIES = self._list_movies()
+		return self.MOVIES
 	def get_music(self, title=None, artist=None, album=None):
 		objects = {}
-		music = self._list_music()
-		for filepath in music:
-			title = music[filepath]['title']
-			data = music[title]
-			data['media_type'] = 'Music'
-			objects[title] = Media(data=music[title])
-		return objects
+		self.MUSIC = self._list_music()
+		return self.MUSIC
 	def get_series(self, filter_by_name=None, active_series=None):
 		"""
 		main getter function for populating playlist object with series.
@@ -845,6 +738,8 @@ class Playlist():
 		series = self._list_series()
 		if active_series is None:
 			try:
+				if self.ACTIVE_SERIES is None:
+					self.ACTIVE_SERIES = list(series.keys())
 				active_series = self.ACTIVE_SERIES
 			except:
 				print("Series names list not provided to playlist object. Initializing as *...")
@@ -860,13 +755,16 @@ class Playlist():
 				for episode_number in series[series_name][season]:
 					d = series[series_name][season][episode_number]
 					#d['media_type'] = 'Series'
+					print("d:", d)
 					objects[series_name][season][episode_number] = Media(data=d)
 		if filter_by_name is not None:
 			out = {}
-			out[filter_by_name] = obects[filter_by_name]
-			return out
+			out[filter_by_name] = objects[filter_by_name]
+			ret = out
 		else:
-			return objects
+			ret = objects
+		self.SERIES = ret
+		return ret
 	def _get_random_series(self):
 		names = self._list_series()
 		ct = len(names)
@@ -931,17 +829,7 @@ class Playlist():
 	def sort_seasons(self, series_name):
 		return sorted([s for s in list(self.SERIES[series_name].keys())])
 	def sort_episode_numbers(self, series_name, season):
-		l = list(self.SERIES[series_name][season].keys())
-		out = []
-		for en in l:
-			if "," in str(en):
-				for sen in en.split(','):
-					out.append(int(sen))
-			else:
-				if type(en) != int:
-					en = int(en)
-				out.append(en)
-		return out
+		return sorted([en for en in list(self.SERIES[series_name][season].keys())])
 	def get_first_s_en_series(self, series_name=None):
 		if series_name is None:
 			print(f"No series name provided! Randomizing...")
@@ -1095,6 +983,8 @@ class Playlist():
 				series_name = self.get_random_series_name()
 				obj = self.get_last_episode(series_name=series_name)
 				print(f"get_next_series - Error: couldn't retreive last entry with series {series_name} - {e}")
+		if type(obj) == dict:
+			obj = Media(**obj)
 		return self.get_next_episode(series_name=obj.series_name, season=obj.season, episode_number=obj.episode_number)		
 
 	def get_next(self, query=None, media_type=None):
@@ -1107,39 +997,185 @@ class Playlist():
 		elif media_type == 'Music':
 			return self.get_next_music()
 
-
-class SetScale():
-	def __init__(self, scale=None, player=None, run=False):
-		if player is None:
-			player = Player(new_player_window=False)
-		self.player = player
-		if scale is None:
-			scale = self.player.SCALE*100
-		self.scale = scale
-		if run:
-			self.show()
+class Scanner():
+	def __init__(self, path="/media/monkey/usbhd/Media"):
+		self.MEDIA_DIR = path
+		self.DATA_DIR = os.path.join(os.path.expanduser("~"), '.nplayerv2')
+		self.SAVEFILE = os.path.join(self.DATA_DIR, 'media.dat')
+		self.SERIES_DIR = os.path.join(self.MEDIA_DIR, 'Series')
+		self.MOVIES_DIR = os.path.join(self.MEDIA_DIR, 'Movies')
+		self.MUSIC_DIR = os.path.join(self.MEDIA_DIR, 'Music')
+		self.OTHER_DIR = os.path.join(self.MEDIA_DIR, 'Other')
+		self.SERIES = {}
+		self.MOVIES = {}
+		self.MUSIC = {}
+		self.OTHER = {}
+		self.Guesser = MediaGuesser()
+	def _find(self, path, ext):
+		try:
+			ret = subprocess.check_output(f"find \"{path}\" -name \"*{ext}\"", shell=True).decode().strip().splitlines()
+			if ret == '':
+				ret = []
+			return ret
+		except Exception as e:
+			print(F"Error - {e}")
+			return []
+	def find(self, path='/media/monkey/usbhd/Media/Series'):
+		out = []
+		exts = ['.mov', '.avi', '.mp4', '.wmv', '.mkv', '.flv', '.wav', '.mp3', '.ac3']
+		for ext in exts:
+			files = self._find(path=path, ext=ext)
+			for filepath in files:
+				out.append(filepath)
+		return out
+	def _list_series_names(self):
+		names = os.listdir(self.SERIES_DIR)
+		return names
+	def add_series(self, filepath):
+		if type(filepath) == str:
+			info = self.Guesser.get_info_from_filepath(filepath)
 		else:
-			self.slider_win = None
-	def show(self):
-		self.slider_win = self.scale_slider()
-		self.slider.set(self.scale)
-	def scale_slider(self):
-		root = tk.Tk()
-		root.geometry("400x100")
-		self.slider = tk.Scale(root, label="Set Scale:", variable=self.scale, from_=-200, to=200, orient=tk.HORIZONTAL, command=self.get_scale)
-		self.set_btn = tk.Button(root, text="Set!", command=self.submit)
-		self.slider.pack(expand=True, fill=tk.BOTH)
-		self.set_btn.pack()
-		return root
-	def submit(self):
-		self.scale = self.get_scale()
-		self.slider_win.destroy()
-		return self.scale
-	def get_scale(self, event=None):
-		self.scale = self.slider.get()/100
-		self.player.set_scale(self.scale)
-		return self.scale
-
+			info = filepath
+			filepath = info['filepath']
+		obj = Media(**info)
+		if obj.series_name not in list(self.SERIES.keys()):
+			self.SERIES[obj.series_name] = {}
+		if obj.season not in list(self.SERIES[obj.series_name].keys()):
+			self.SERIES[obj.series_name][obj.season] = {}
+		if obj.episode_number not in list(self.SERIES[obj.series_name][obj.season].keys()):
+			self.SERIES[obj.series_name][obj.season][obj.episode_number] = obj
+			print(f"Episode added: {obj.filepath}")
+		else:
+			print("Already added!", obj.__dict__)
+		return self.SERIES
+	def _list_series(self):
+		self.SERIES = {}
+		names = self._list_series_names()
+		for series_name in names:
+			path = os.path.join(self.SERIES_DIR, series_name)
+			files = self.find(path=path)
+			for filepath in files:
+				self.add_series(filepath)
+		return self.SERIES
+	def _list_movies(self, path=None):
+		self.MOVIES = {}
+		if path is None:
+			path = self.MOVIES_DIR
+		self.MOVIES = {}
+		files = self.find(path=path)
+		for filepath in files:
+			obj = Media(**self.Guesser.get_info_from_filepath(filepath))
+			self.MOVIES[obj.title] = obj
+		return self.MOVIES
+	def _list_music(self, path=None):
+		self.MUSIC = {}
+		if path is None:
+			path = self.MOVIES_DIR
+		files = self.find(path=path)
+		for filepath in files:
+			obj = Media(**self.Guesser.get_info_from_filepath(filepath))
+			self.MUSIC[obj.title] = obj
+		return self.MUSIC
+	def _list_all_media(self, path=None):
+		out = {}
+		out['Series'] = {}
+		out['Movies'] = {}
+		out['Music'] = {}
+		out['Other'] = {}
+		if path is None:
+			path = self.MEDIA_DIR
+		files = self.find(path=path)
+		for filepath in files:
+			obj = Media(**self.Guesser.get_info_from_filepath(filepath))
+			if obj.media_type == 'Music':
+				out['Music'][obj.filepath] = obj
+			elif obj.media_type == 'Movies':
+				out['Movies'][obj.title] = obj
+			elif obj.media_type == 'Other':
+				out['Other'][obj.filepath] = obj
+			elif obj.media_type == 'Series':
+				out['Series'] = self.add_series(obj.filepath)
+		return out
+	def object_to_dict(self, obj):
+		return obj.__dict__
+	def dict_to_object(self, d):
+		return Media(**d)
+	def dict_to_objects(self, d):
+		objects = {}
+		objects['Series'] = {}
+		objects['Movies'] = {}
+		objects['Music'] = {}
+		objects['Other'] = {}
+		for sn in d['Series']:
+			if sn not in list(objects['Series'].keys()):
+				objects['Series'][sn] = {}
+			for season in list(d['Series'][sn].keys()):
+				if season not in list(objects['Series'][sn].keys()):
+					objects['Series'][sn][season] = {}
+				for en in list(d['Series'][sn][season].keys()):
+					objects['Series'][sn][season][en] = Media(**d['Series'][sn][season][en])
+		for title in d['Movies']:
+			objects['Movies'][title] = Media(**d['Movies'][title])
+		for filepath in d['Music']:
+			objects['Music'][filepath] = Media(**d['Music'][filepath])
+		for filepath in d['Other']:
+			objects['Other'][filepath] = Media(**d['Other'][filepath])
+		return objects
+	def objects_to_dict(self, data=None):
+		out = {}
+		out['Series'] = {}
+		out['Movies'] = {}
+		out['Music'] = {}
+		out['Other'] = {}
+		if data is None:
+			movies = self.Movies
+			series = self.Series
+			other = self.Other
+			music = self.Music
+		else:
+			movies = data['Movies']
+			series = data['Series']
+			music = data['Music']
+			other = data['Other']
+		for sn in series:
+			out['Series'][sn] = {}
+			for season in series[sn]:
+				if season not in list(out['Series'][sn].keys()):
+					out['Series'][sn][season] = {}
+				for en in series[sn][season]:
+					obj = series[sn][season][en]
+					out['Series'][sn][season][en] = obj.__dict__
+			for title in movies:
+				obj = movies[title]
+				out['Movies'][obj.title] = obj.__dict__
+			for filepath in music:
+				obj = music[filepath]
+				out['Music'][obj.filepath] = obj.__dict__
+			for filepath in other:
+				obj = other[filepath]
+				out['Other'][obj.filepath] = obj.__dict__
+		return out
+	def save_media(self, data=None):
+		t = list(data['Movies'].values())[0]
+		if isinstance(t, Media):
+			data = self.ojects_to_dict(data)
+		with open(self.SAVEFILE, 'wb') as f:
+			pickle.dump(data, f)
+			f.close()
+		print(f"Media saved to {self.SAVEFILE}!")
+	def load_media(self):
+		try:
+			with open(self.SAVEFILE, 'rb') as f:
+				data = pickle.load(f)
+				f.close()
+		except Exception as e:
+			print(f"Error loading media: {e}")
+			return None
+		self.SERIES = data['Series']
+		self.MOVIES = data['Movies']
+		self.MUSIC = data['Music']
+		self.OTHER = data['Other']
+		return self.dict_to_objects(data)
 
 class Player():
 	def __init__(self, width=None, height=None, cache_size=6000, scale_video=1.0, run_mainloop=False, new_player_window=True, vlc_verbosity=0, fullscreen=False, playlistfile=None, seek_percentage=0.1):
@@ -1196,20 +1232,21 @@ class Player():
 		self.EVENTS = {260: 'Playing', 261: 'Paused', 262: 'Stopped', 265: 'Playback Ended'}
 		self.ALL_EVENTS = [i for i in dir(vlc.Event().type) if '_' not in i]
 		self.ACTIVE_SERIES = None
-		config = self.get_config(apply_changes=True)
 		try:
+			config = self.get_config(apply_changes=True)
 			self.ACTIVE_SERIES = config['ACTIVE_SERIES']
 		except:
+			config = self._init_config()
 			#if active series names attribute is not in config, re-init with entire series list.
 			print("ACTIVE_SERIES key not in settings file! Defaulting to 'all'...")
 			config['ACTIVE_SERIES'] = Playlist()._list_series().keys()
 			self.save_current_config(config)
-		self.Scaler = self.get_scaler()
 		self.PLAYLISTFILE = playlistfile
 		if playlistfile is not None:
 			self.PLAYLIST = self.load_playlist(playlistfile)
 		else:
-			self.PLAYLIST = Playlist(active_series=self.ACTIVE_SERIES)
+			self.PLAYLIST = Playlist(init_empty=True)
+			self.load_media()
 		if self.PLAYLISTFILE is None:
 			self.PLAYLISTFILE = 'testplaylist.txt'
 		if self.PLAY_NEXT is None:
@@ -1217,13 +1254,44 @@ class Player():
 				pass
 			else:
 				self.PLAY_NEXT = self.PLAYLIST.NEXT
-			self.ACTIVE_SERIES = self.PLAYLIST.OTHER
+		if self.ACTIVE_SERIES is None:	
+			self.ACTIVE_SERIES = self.PLAYLIST.ACTIVE_SERIES
 		self.Poller = DataPoller(player=self.PLAYER)
 		if run_mainloop:
 			self.start_loop()
 			self.VIEWER.mainloop()
-	def get_scaler(self):
-		return SetScale(player=self)
+	def scan(self, path=None):
+		if path is None:
+			path = self.MEDIA_DIR
+		self.Scanner = Scanner(path=path)
+	def filter_series(self, active_series_names=None):
+		out = {}
+		if active_series_names is None:
+			active_series_names = self.ACTIVE_SERIES
+		for sn in active_series_names:
+			 if sn not in list(out.keys()):
+				 print(self.Scanner.SERIES.keys())
+				 out[sn] = self.Scanner.SERIES[sn]
+		return out
+	def load_media(self):
+		self.Scanner = Scanner(path=self.PLAYLIST.MEDIA_DIR)
+		media = self.Scanner.load_media()
+		if self.ACTIVE_SERIES is None or self.ACTIVE_SERIES == []:
+			self.ACTIVE_SERIES = list(media['Series'].keys())
+		self.SERIES = self.PLAYLIST.get_series()
+		self.MOVIES = self.PLAYLIST.get_movies()
+		self.MUSIC = self.PLAYLIST.get_movies()
+		self.OTHER = [{d['filepath']: Media(**d)} for d in list(self.Scanner.OTHER.values())]
+		filtered = self.filter_series(self.ACTIVE_SERIES)
+		if filtered == {}:
+			print("Failed to filter series!")
+		else:
+			print("Series filtered!")
+			self.SERIES = filtered
+		self.PLAYLIST.SERIES = self.SERIES
+		self.PLAYLIST.MOVIES = self.MOVIES
+		self.PLAYLIST.MUSIC = self.MUSIC
+		self.PLAYLIST.OTHER = self.OTHER
 	def get_player_data(self):
 		return self.Poller.poll()
 	def get_player_attr(self, key):
@@ -1246,14 +1314,10 @@ class Player():
 		controlls_menu.add_separator() # Add a separator line
 		controlls_menu.add_command(label="Volume Up", command=lambda: self.PLAYER.audio_set_volume(self.PLAYER.audio_get_volume()+10))
 		controlls_menu.add_command(label="Volume Down", command=lambda: self.PLAYER.audio_set_volume(self.PLAYER.audio_get_volume()-10))
-		controlls_menu.add_command(label="Scale Up", command=self.scale_up)
-		controlls_menu.add_command(label="Scale Down", command=self.scale_down)
-		controlls_menu.add_command(label="Set Sccale:", command=self.get_scaler().show)
-		controlls_menu.add_separator() # Add a separator line
 		controlls_menu.add_command(label="Exit", command=exit)
 		edit_menu.add_command(label="Set Active Series", command=self.edit_active_series)
 		edit_menu.add_command(label="Media Manager", command=self.run_media_manager)
-		edit_menu.add_command(label="Pirate Bay Downloader", command=self.launch_pbdl)
+		edit_menu.add_command(label="Pirate Bay Downloader", command=lambda: print("NOT IMPLEMENTED"))
 		edit_menu.add_command(label="Metadata Tag Editor", command=lambda: print("NOT IMPLEMENTED"))
 		playlist_menu.add_command(label="Load Playlist File...", command=self.load_playlist)
 		playlist_menu.add_command(label="Export Current Playlist...", command=self.export_current_playlist)
@@ -1275,7 +1339,7 @@ class Player():
 			if write_config_file:
 				print("_set_attr() - write_config_file=True, saving current config!")
 				self.save_current_config(config=config)
-			print("Attribute set!", key, value)
+			print("Attribute set!", key)
 			return True
 	def get_resolution_nowPlaying(self):
 		try:
@@ -1320,16 +1384,6 @@ class Player():
 		else:
 			print(w, h, w2, h2)
 		return pcnt
-	def scale_up(self, val=0.1):
-		old = self.SCALE
-		self.SCALE = self.SCALE + val
-		self.set_scale(scale=self.SCALE)
-		print(f"Scaled video up: {old} >> {self.SCALE}...")
-	def scale_down(self, val=0.1):
-		old = self.SCALE
-		self.SCALE = self.SCALE - val
-		self.set_scale(scale=self.SCALE)
-		print(f"Scaled video down: {old} >> {self.SCALE}...")
 	def set_scale(self, scale=None):
 		if scale is None:
 			scale = self.get_scale()
@@ -1338,11 +1392,12 @@ class Player():
 		self.PLAYER.video_set_scale(scale)
 		self.SCALE = scale
 	def set_active_series(self, series_names=None):
-		self.ACTIVE_SERIES = series_names
-		conf = self.load_config()
-		conf['ACTIVE_SERIES'] = self.ACTIVE_SERIES
-		self.save_current_config(config=conf)
-		print("Active series updated!")
+		config = self.load_config()
+		d = dict(config)
+		d['ACTIVE_SERIES'] = series_names
+		self.save_current_config(config=d)
+		self._set_attr('ACTIVE_SERIES', series_names)
+		print("Active series updated!", series_names)
 	def load_config(self):
 		with open(self.CONF_PATH, 'rb') as f:
 			config = pickle.load(f)
@@ -1391,7 +1446,8 @@ class Player():
 			d['CACHE_SIZE'] = 6000
 			d['FULLSCREEN'] = False
 			d['SEEK'] = 0.1
-			return d
+		self.save_current_config(config=d)
+		return d
 	def save_current_config(self, config=None):
 		if config is None:
 			types = [None, bool, str, int, list, dict]
@@ -1448,6 +1504,8 @@ class Player():
 			else:
 				print("object is None! Getting next from playlist...")
 				obj = self.PLAYLIST.get_next()
+		if type(obj) == dict:
+			obj = Media(**obj)
 		if obj.media_type == 'Series':
 			self.PLAYLIST.HISTORY[obj.media_type][obj.series_name] = obj
 			self.PLAYLIST.save_history(self.PLAYLIST.HISTORY)
@@ -1544,8 +1602,6 @@ class Player():
 			elif self.EVENT == 'SeekRev':
 				print("Rewinding...")
 				self.seek_rev()
-			elif self.EVENT == 'PBDL':
-				self.launch_pbdl()
 			elif self.EVENT == 'Exit':
 				print("loop exiting...")
 				self.save_current_config()
@@ -1648,7 +1704,7 @@ class Player():
 				else:
 					print("Item already in active:", item)
 			update_list(listbox_active_series, active)
-			self.PLAYER.set_active_series(active)
+			self._set_attr('ACTIVE_SERIES', active, True)
 			return active
 		def del_item():
 			indexes = listbox_active_series.curselection()
@@ -1661,14 +1717,15 @@ class Player():
 				else:
 					print("Item not in active???", item)
 			update_list(listbox_active_series, active)
-			self.PLAYER.set_active_series(active)
+			self.set_active_series(active)
 			return active
 		def update_active(active_items=None):
 			if active_items is None:
 				active_items = listbox_active_series.get(0, tk.END)
-				if len(active_items) != len(self.PLAYER.ACTIVE_SERIES):
+				if len(active_items) != len(self.ACTIVE_SERIES):
 					print("Length is different! Updating player option ('ACTIVE_SERIES')...")
-					self.PLAYER.set_active_series(series_names=active_items)
+					#self.set_active_series(series_names=active_items)
+					self._set_attr('ACTIVE_SERIES', active_items)
 			root.destroy()
 			return active_items
 		def update_list(lb, items):
@@ -1697,12 +1754,8 @@ class Player():
 		btn_ok.pack(side='right')
 		active = self.ACTIVE_SERIES
 		update_list(listbox_active_series, active)
-		all_series = list(self.PLAYER.PLAYLIST._list_series().keys())
+		all_series = self.PLAYLIST.ACTIVE_SERIES
 		update_list(listbox_all_series, all_series)
-	def launch_pbdl(self):
-		print("Launching Pirate Bay downloader...")
-		self.PBDL_UI = PBDL_UI()
-		self.PBDL_UI.main()
 
 if __name__ == "__main__":
 	import sys

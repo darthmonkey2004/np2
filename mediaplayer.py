@@ -299,60 +299,16 @@ class MediaManager():
 		self.build()
 		self.obj = None
 
-	def _get_column_series(self, sn='Solar Opposites', season=4, en=1):
-		data = self.PLAYLIST.SERIES[sn][season][en]
-		if isinstance(data, Media):
-			data = dict(data.__dict__)
-		return data
-
-	def _get_column_movie(self, title):
-		data = self.PLAYLIST.MOVIES[title]
-		if isinstance(data, Media):
-			data = dict(data.__dict__)
-		return data
-
-	def _get_column_music(self, filepath):
-		data = self.PLAYLIST.MUSIC[filepath]
-		if isinstance(data, Media):
-			data = dict(data.__dict__)
-		return data
-
-	def _get_column_other(self, filepath):
-		data = self.PLAYLIST.MOVIES[filepath]
-		if isinstance(data, Media):
-			data = dict(data.__dict__)
-		return data
-
 	def _get_columns(self, filepath=None, media_type=None):
-		self.PLAYLIST.update()
-		if media_type is None:
-			media_type = self.Guesser.guess_media_type(filepath)
-		if filepath is None:
-			if media_type == 'Series':
-				d = self.PLAYLIST.SERIES[list(self.PLAYLIST.SERIES.keys())[0]]
-				season = list(d.keys())[0]
-				en = list(d[season].keys())[0]
-				if type(d[season][en]) == dict:
-					return [k for k in list(d[season][en].keys()) if k != 'data']
-				else:
-					return [k for k in list(d[season][en].__dict__.keys()) if k != 'data']
-			else:
-				d = self.__dict__[media_type.upper()]
-				return [k for k in list(list(d.values())[0].__dict__.keys()) if k != 'data']
-
-
-
-
-		info = self.Guesser.get_info_from_filepath(filepath)
 		if media_type == 'Series':
-			return self._get_column_series(sn=info['series_name'], season=info['season'], en=info['episode_number'])
+			return ['filepath', 'series_name', 'season', 'episode_number', 'episode_name', 'media_type', 'poster', 'plot']
 		elif media_type == 'Movies':
-			return self._get_column_movie(title=info['title'])
+			return ['filepath', 'title', 'year', 'media_type', 'poster', 'plot']
 		elif media_type == 'Music':
 			#return self._get_column_music(filepath=filepath)
 			return ['title', 'youtube_id', 'artist', 'album', 'filepath']
 		elif media_type == 'Other':
-			return self._get_column_other(filepath=filepath)
+			return ['title', 'filepath']
 		else:
 			print("Unhandled media type:", media_type, filepath, info)
 	
